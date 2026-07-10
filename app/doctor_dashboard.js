@@ -172,20 +172,19 @@ export default function DoctorDashboard() {
     
     const [pendingRequests, setPendingRequests] = useState([]);
     const [fetchingPending, setFetchingPending] = useState(false);
+    
+    // Accept Modal States
+    const [acceptModalVisible, setAcceptModalVisible] = useState(false);
+    const [selectedRequest, setSelectedRequest] = useState(null);
+    const [modifiedTime, setModifiedTime] = useState('');
+    const [tokenNumber, setTokenNumber] = useState('');
 
     useEffect(() => {
-        if (doctor?.patient_queue) {
-            const queue = JSON.parse(doctor.patient_queue);
-            if (queue.length > 0) {
-                fetchActivePatients(queue);
-            } else {
-                setActivePatients([]);
-            }
-        }
         if (doctor?.id) {
+            fetchActivePatients(doctor.id);
             fetchPendingRequests(doctor.id);
         }
-    }, [doctor?.patient_queue, doctor?.id]);
+    }, [doctor?.id]);
 
     const fetchPendingRequests = async (docId) => {
         setFetchingPending(true);
@@ -202,16 +201,28 @@ export default function DoctorDashboard() {
         }
     };
 
-    const handleRequestAction = async (patientId, action) => {
+    const openAcceptModal = (req) => {
+        setSelectedRequest(req);
+        setModifiedTime(req.appointment_time || '');
+        setTokenNumber('');
+        setAcceptModalVisible(true);
+    };
+
+    const confirmAccept = async () => {
         try {
-            const endpoint = action === 'accept' ? '/doctor/accept_request' : '/doctor/reject_request';
-            const res = await fetch(`${API_URL}${endpoint}`, {
+            const res = await fetch(`${API_URL}/doctor/accept_request`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ doctor_id: doctor.id, patient_id: patientId })
+                body: JSON.stringify({ 
+                    appointment_id: selectedRequest.id, 
+                    modified_time: modifiedTime, 
+                    token_number: tokenNumber 
+                })
             });
             if (res.ok) {
-                onRefresh(); // Refresh doctor profile to get updated queue
+                setAcceptModalVisible(false);
+                fetchPendingRequests(doctor.id);
+                fetchActivePatients(doctor.id);
             } else {
                 Alert.alert("Error", "Failed to process request");
             }
@@ -220,21 +231,33 @@ export default function DoctorDashboard() {
         }
     };
 
-    const fetchActivePatients = async (queue) => {
-        setFetchingPatients(true);
+    const handleReject = async (reqId) => {
         try {
-            const response = await fetch(`${API_URL}/doctor/patients`, {
+            const res = await fetch(`${API_URL}/doctor/reject_request`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ patient_ids: queue })
+                body: JSON.stringify({ appointment_id: reqId })
             });
+            if (res.ok) {
+                fetchPendingRequests(doctor.id);
+            } else {
+                Alert.alert("Error", "Failed to reject request");
+            }
+        } catch (e) {
+            Alert.alert("Error", "Network Error");
+        }
+    };
 
+    const fetchActivePatients = async (docId) => {
+        setFetchingPatients(true);
+        try {
+            const response = await fetch(`${API_URL}/doctor/active_appointments/${docId}`);
             if (response.ok) {
                 const data = await response.json();
                 setActivePatients(data);
             }
         } catch (e) {
-            console.error('Error fetching patients:', e);
+            console.error('Error fetching appointments:', e);
         } finally {
             setFetchingPatients(false);
         }
@@ -517,23 +540,26 @@ export default function DoctorDashboard() {
                                 <View key={idx} style={[styles.queueItem, { flexDirection: 'column', alignItems: 'stretch' }]}>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
                                         <View style={[styles.alertCircle, { backgroundColor: '#FF9800' }]}>
-                                            <MaterialIcons name="person" size={16} color="white" />
+                                            <MaterialIcons name="event" size={16} color="white" />
                                         </View>
                                         <View style={{ flex: 1, marginLeft: 10 }}>
-                                            <Text style={[styles.queueText, { fontSize: 17 }]}>{req.name}</Text>
-                                            <Text style={styles.queueSub}>{req.email}</Text>
+                                            <Text style={[styles.queueText, { fontSize: 17 }]}>{req.patient_name}</Text>
+                                            <Text style={styles.queueSub}>{req.appointment_date} at {req.appointment_time}</Text>
                                         </View>
+                                    </View>
+                                    <View style={{ backgroundColor: '#FFF3E0', padding: 10, borderRadius: 8, marginBottom: 10 }}>
+                                        <Text style={{ fontSize: 13, color: '#E65100' }}>Symptoms: {req.symptoms || 'None provided'}</Text>
                                     </View>
                                     <View style={{ flexDirection: 'row', gap: 10 }}>
                                         <TouchableOpacity 
                                             style={[styles.modalActionBtn, { flex: 1, backgroundColor: '#4CAF50', paddingVertical: 8 }]}
-                                            onPress={() => handleRequestAction(req.id, 'accept')}
+                                            onPress={() => openAcceptModal(req)}
                                         >
                                             <Text style={[styles.modalActionText, { fontSize: 14 }]}>Accept</Text>
                                         </TouchableOpacity>
                                         <TouchableOpacity 
                                             style={[styles.modalActionBtn, { flex: 1, backgroundColor: '#F44336', paddingVertical: 8 }]}
-                                            onPress={() => handleRequestAction(req.id, 'reject')}
+                                            onPress={() => handleReject(req.id)}
                                         >
                                             <Text style={[styles.modalActionText, { fontSize: 14 }]}>Reject</Text>
                                         </TouchableOpacity>
@@ -568,17 +594,16 @@ export default function DoctorDashboard() {
                                 }}
                             >
                                 <View style={styles.alertCircle}>
-                                    <MaterialIcons name="priority-high" size={16} color="white" />
+                                    <MaterialIcons name="confirmation-number" size={16} color="white" />
                                 </View>
                                 <View style={{ flex: 1 }}>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                         <Text style={[styles.queueText, { fontSize: 17 }]}>{patient.name}</Text>
-                                        <Text style={[styles.queueSub, { marginLeft: 5 }]}>{patient.last_assessment_date ? new Date(patient.last_assessment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now'}</Text>
+                                        <Text style={[styles.queueSub, { marginLeft: 5, color: '#1976D2', fontWeight: 'bold' }]}>Token: {patient.token_number || '--'}</Text>
                                     </View>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                                        <View style={[styles.statusIndicator, { backgroundColor: patient.bp_status === 'High' ? '#FF5252' : '#4CAF50' }]} />
-                                        <Text style={[styles.queueSub, { fontWeight: '600', color: patient.bp_status === 'High' ? '#FF5252' : '#666' }]}>
-                                            BP: {patient.bp_status || 'N/A'}
+                                        <Text style={[styles.queueSub, { fontWeight: '600', color: '#666' }]}>
+                                            Time: {patient.appointment_time || 'N/A'}
                                         </Text>
                                         <Text style={[styles.queueSub, { marginLeft: 10 }]}>Age: {patient.age || 'N/A'}</Text>
                                     </View>
@@ -926,6 +951,46 @@ export default function DoctorDashboard() {
 
                             <View style={{ height: 100 }} />
                         </ScrollView>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Accept Appointment Modal */}
+            <Modal visible={acceptModalVisible} transparent={true} animationType="fade">
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { padding: 25 }]}>
+                        <Text style={[styles.modalTitle, { marginBottom: 5 }]}>Confirm Appointment</Text>
+                        <Text style={{ color: '#666', marginBottom: 20 }}>Assign a token number and verify the time slot.</Text>
+                        
+                        <View style={{ width: '100%', marginBottom: 15 }}>
+                            <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#333', marginBottom: 8 }}>Time Slot</Text>
+                            <TextInput
+                                style={styles.formInput}
+                                value={modifiedTime}
+                                onChangeText={setModifiedTime}
+                                placeholder="e.g. 10:30 AM"
+                            />
+                        </View>
+
+                        <View style={{ width: '100%', marginBottom: 25 }}>
+                            <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#333', marginBottom: 8 }}>Token Number</Text>
+                            <TextInput
+                                style={styles.formInput}
+                                value={tokenNumber}
+                                onChangeText={setTokenNumber}
+                                placeholder="e.g. 5"
+                                keyboardType="numeric"
+                            />
+                        </View>
+
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                            <TouchableOpacity style={[styles.submitBtn, { flex: 1, backgroundColor: '#E0E0E0' }]} onPress={() => setAcceptModalVisible(false)}>
+                                <Text style={[styles.submitBtnText, { color: '#333' }]}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.submitBtn, { flex: 1 }]} onPress={confirmAccept}>
+                                <Text style={styles.submitBtnText}>Confirm</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </View>
             </Modal>
@@ -1493,5 +1558,13 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#666',
         fontWeight: 'bold',
+    },
+    inputField: {
+        borderWidth: 1,
+        borderColor: '#DDD',
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 16,
+        backgroundColor: '#F9FAFB'
     }
 });

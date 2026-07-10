@@ -231,7 +231,39 @@ def setup_database():
             )
         """)
 
-        # 10. Consultations Table
+        # 10. Appointments Table
+        print("Ensuring 'appointments' table exists...")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS appointments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                patient_id INT NOT NULL,
+                doctor_id INT NOT NULL,
+                appointment_date VARCHAR(20) NOT NULL,
+                appointment_time VARCHAR(20) NOT NULL,
+                symptoms TEXT,
+                token_number VARCHAR(10),
+                status VARCHAR(20) DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE
+            )
+        """)
+
+        # 11. Notifications Table
+        print("Ensuring 'notifications' table exists...")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                title VARCHAR(100) NOT NULL,
+                message TEXT NOT NULL,
+                is_read BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+
+        # 12. Consultations Table
         print("Ensuring 'consultations' table exists...")
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS consultations (

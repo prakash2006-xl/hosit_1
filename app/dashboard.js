@@ -15,6 +15,7 @@ export default function DashboardScreen() {
     const { t } = useLanguage();
     const router = useRouter();
     const [data, setData] = useState(null);
+    const [unreadCount, setUnreadCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [profile, setProfile] = useState({});
@@ -83,6 +84,18 @@ export default function DashboardScreen() {
             }
 
             // Fetch emergency contacts
+            if (userId && userId !== 0) {
+                try {
+                    const notifRes = await fetch(`${API_URL}/patient/notifications/${userId}`);
+                    if (notifRes.ok) {
+                        const notifs = await notifRes.json();
+                        const unread = notifs.filter(n => !n.is_read).length;
+                        setUnreadCount(unread);
+                    }
+                } catch (e) {
+                    console.error('API fetch error', e);
+                }
+            }
             if (userId && userId !== 0) {
                 const contactsRes = await fetch(`${API_URL}/emergency/contacts?user_id=${userId}`);
                 if (contactsRes.ok) {
@@ -384,6 +397,14 @@ export default function DashboardScreen() {
                         <Text style={styles.greeting} numberOfLines={1}>{t('dashboard.greeting', { name: profile.name || t('common.friend') })}</Text>
                         <Text style={styles.subtitle} numberOfLines={1}>{t('dashboard.subtitle')}</Text>
                     </View>
+                    <TouchableOpacity onPress={() => router.push('/notifications')} style={[styles.profileBtn, {marginRight: 10}]}>
+                        <MaterialIcons name="notifications" size={28} color="#2196F3" />
+                        {unreadCount > 0 && (
+                            <View style={styles.badge}>
+                                <Text style={styles.badgeText}>{unreadCount}</Text>
+                            </View>
+                        )}
+                    </TouchableOpacity>
                     <TouchableOpacity onPress={() => router.push('/profile')} style={styles.profileBtn}>
                         <MaterialIcons name="person" size={28} color="#2196F3" />
                     </TouchableOpacity>
@@ -500,6 +521,14 @@ export default function DashboardScreen() {
                     <MaterialIcons name="chevron-right" size={24} color="#4CAF50" />
                 </TouchableOpacity>
 
+                <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/find_doctors')}>
+                    <View style={styles.actionBtnInner}>
+                        <FontAwesome5 name="search-plus" size={26} color="#FF9800" />
+                        <Text style={styles.actionBtnText}>Find & Book Doctors</Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={24} color="#FF9800" />
+                </TouchableOpacity>
+
                 <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/general_chat')}>
                     <View style={styles.actionBtnInner}>
                         <FontAwesome5 name="robot" size={26} color="#03A9F4" />
@@ -614,21 +643,35 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     profileBtn: {
-        backgroundColor: '#E3F2FD',
         padding: 8,
-        borderRadius: 30,
-        borderWidth: 1,
-        borderColor: '#2196F3',
-        elevation: 2,
-        flexShrink: 0,
+        backgroundColor: '#E3F2FD',
+        borderRadius: 20,
+    },
+    badge: {
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        backgroundColor: 'red',
+        borderRadius: 10,
+        width: 20,
+        height: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#FFF'
+    },
+    badgeText: {
+        color: 'white',
+        fontSize: 10,
+        fontWeight: 'bold'
     },
     greeting: {
-        fontSize: 26,
+        fontSize: 22,
         fontWeight: 'bold',
-        color: '#1565C0',
+        color: '#1976D2',
     },
     subtitle: {
-        fontSize: 16,
+        fontSize: 14,
         color: '#666',
         marginTop: 4,
     },

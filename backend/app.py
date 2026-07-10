@@ -1888,30 +1888,56 @@ def get_patient_prescriptions(patient_id):
         if 'cursor' in locals(): cursor.close()
         if 'conn' in locals(): conn.close()
 
-@app.route('/patient/request_consultation', methods=['POST'])
-def request_consultation():
+@app.route('/patient/book_appointment', methods=['POST'])
+def book_appointment():
     data = request.json
     patient_id = data.get('patient_id')
     doctor_id = data.get('doctor_id')
+    date = data.get('date', '')
+    time = data.get('time', '')
+    symptoms = data.get('symptoms', '')
     
     conn = get_db_connection()
     if not conn: return jsonify({'message': 'DB Error'}), 500
     try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, symptoms, status)
+            VALUES (%s, %s, %s, %s, %s, 'pending')
+        """, (patient_id, doctor_id, date, time, symptoms))
+        conn.commit()
+        return jsonify({'status': 'success', 'message': 'Appointment booked successfully.'})
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/patient/notifications/<int:user_id>', methods=['GET'])
+def get_notifications(user_id):
+    conn = get_db_connection()
+    if not conn: return jsonify({'message': 'DB Error'}), 500
+    try:
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT pending_requests FROM doctors WHERE id = %s", (doctor_id,))
-        doc = cursor.fetchone()
-        if not doc: return jsonify({'message': 'Doctor not found'}), 404
-        
-        pending = []
-        if doc['pending_requests']:
-            pending = json.loads(doc['pending_requests'])
-        
-        if patient_id not in pending:
-            pending.append(patient_id)
-            cursor.execute("UPDATE doctors SET pending_requests = %s WHERE id = %s", (json.dumps(pending), doctor_id))
-            conn.commit()
-            
-        return jsonify({'status': 'success', 'message': 'Consultation request sent.'})
+        cursor.execute("SELECT * FROM notifications WHERE user_id = %s ORDER BY created_at DESC", (user_id,))
+        return jsonify(cursor.fetchall())
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+    finally:
+        if 'cursor' in locals(): cursor.close()
+        if 'conn' in locals(): conn.close()
+
+@app.route('/patient/notifications/read', methods=['POST'])
+def mark_notifications_read():
+    data = request.json
+    user_id = data.get('user_id')
+    conn = get_db_connection()
+    if not conn: return jsonify({'message': 'DB Error'}), 500
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE notifications SET is_read = TRUE WHERE user_id = %s", (user_id,))
+        conn.commit()
+        return jsonify({'status': 'success'})
     except Exception as e:
         return jsonify({'message': str(e)}), 500
     finally:
@@ -1924,17 +1950,12 @@ def get_pending_requests(doctor_id):
     if not conn: return jsonify({'message': 'DB Error'}), 500
     try:
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT pending_requests FROM doctors WHERE id = %s", (doctor_id,))
-        doc = cursor.fetchone()
-        if not doc or not doc['pending_requests']: 
-            return jsonify([])
-            
-        pending_ids = json.loads(doc['pending_requests'])
-        if not pending_ids:
-            return jsonify([])
-            
-        format_strings = ','.join(['%s'] * len(pending_ids))
-        cursor.execute(f"SELECT * FROM users WHERE id IN ({format_strings})", tuple(pending_ids))
+        cursor.execute("""
+            SELECT a.*, u.name as patient_name, u.age, u.gender 
+            FROM appointments a 
+            JOIN users u ON a.patient_id = u.id 
+            WHERE a.doctor_id = %s AND a.status = 'pending'
+        """, (doctor_id,))
         return jsonify(cursor.fetchall())
     except Exception as e:
         return jsonify({'message': str(e)}), 500
@@ -1945,27 +1966,39 @@ def get_pending_requests(doctor_id):
 @app.route('/doctor/accept_request', methods=['POST'])
 def accept_request():
     data = request.json
-    doctor_id = data.get('doctor_id')
-    patient_id = data.get('patient_id')
+    appointment_id = data.get('appointment_id')
+    modified_time = data.get('modified_time')
+    token_number = data.get('token_number')
     
     conn = get_db_connection()
     if not conn: return jsonify({'message': 'DB Error'}), 500
     try:
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT pending_requests, patient_queue FROM doctors WHERE id = %s", (doctor_id,))
+        cursor.execute("SELECT * FROM appointments WHERE id = %s", (appointment_id,))
+        appt = cursor.fetchone()
+        if not appt: return jsonify({'message': 'Appointment not found'}), 404
+        
+        # Update Appointment
+        cursor.execute("""
+            UPDATE appointments 
+            SET status = 'accepted', appointment_time = %s, token_number = %s 
+            WHERE id = %s
+        """, (modified_time, token_number, appointment_id))
+        
+        # Add to doctor's active patient_queue for compatibility
+        cursor.execute("SELECT patient_queue FROM doctors WHERE id = %s", (appt['doctor_id'],))
         doc = cursor.fetchone()
-        if not doc: return jsonify({'message': 'Doctor not found'}), 404
-        
-        pending = json.loads(doc['pending_requests']) if doc['pending_requests'] else []
         queue = json.loads(doc['patient_queue']) if doc['patient_queue'] else []
+        if appt['patient_id'] not in queue:
+            queue.append(appt['patient_id'])
+            cursor.execute("UPDATE doctors SET patient_queue = %s WHERE id = %s", (json.dumps(queue), appt['doctor_id']))
         
-        if patient_id in pending:
-            pending.remove(patient_id)
-        if patient_id not in queue:
-            queue.append(patient_id)
-            
-        cursor.execute("UPDATE doctors SET pending_requests = %s, patient_queue = %s WHERE id = %s", 
-                      (json.dumps(pending), json.dumps(queue), doctor_id))
+        # Notify Patient
+        cursor.execute("""
+            INSERT INTO notifications (user_id, title, message) 
+            VALUES (%s, 'Appointment Confirmed', %s)
+        """, (appt['patient_id'], f"Your appointment is confirmed for {modified_time}. Token: {token_number}"))
+        
         conn.commit()
         return jsonify({'status': 'success'})
     except Exception as e:
@@ -1977,23 +2010,25 @@ def accept_request():
 @app.route('/doctor/reject_request', methods=['POST'])
 def reject_request():
     data = request.json
-    doctor_id = data.get('doctor_id')
-    patient_id = data.get('patient_id')
+    appointment_id = data.get('appointment_id')
     
     conn = get_db_connection()
     if not conn: return jsonify({'message': 'DB Error'}), 500
     try:
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT pending_requests FROM doctors WHERE id = %s", (doctor_id,))
-        doc = cursor.fetchone()
-        if not doc: return jsonify({'message': 'Doctor not found'}), 404
+        cursor.execute("SELECT * FROM appointments WHERE id = %s", (appointment_id,))
+        appt = cursor.fetchone()
+        if not appt: return jsonify({'message': 'Appointment not found'}), 404
         
-        pending = json.loads(doc['pending_requests']) if doc['pending_requests'] else []
-        if patient_id in pending:
-            pending.remove(patient_id)
-            cursor.execute("UPDATE doctors SET pending_requests = %s WHERE id = %s", (json.dumps(pending), doctor_id))
-            conn.commit()
-            
+        cursor.execute("UPDATE appointments SET status = 'rejected' WHERE id = %s", (appointment_id,))
+        
+        # Notify Patient
+        cursor.execute("""
+            INSERT INTO notifications (user_id, title, message) 
+            VALUES (%s, 'Appointment Cancelled', 'Your appointment request was rejected. Please try another slot.')
+        """, (appt['patient_id'],))
+        
+        conn.commit()
         return jsonify({'status': 'success'})
     except Exception as e:
         return jsonify({'message': str(e)}), 500
