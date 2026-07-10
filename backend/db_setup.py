@@ -43,7 +43,10 @@ def setup_database():
             ('bp_status', 'VARCHAR(50)'), ('sugar_status', 'VARCHAR(50)'),
             ('activity_level', 'VARCHAR(50)'),            ('smoking', 'VARCHAR(10)'),
             ('alcohol', 'VARCHAR(10)'), ('sleep_hours', 'FLOAT'),
-            ('phone', 'VARCHAR(20)')
+            ('phone', 'VARCHAR(20)'), ('allergies', 'TEXT'),
+            ('existing_diseases', 'TEXT'), ('current_medications', 'TEXT'),
+            ('past_surgeries', 'TEXT'), ('family_history', 'TEXT'),
+            ('blood_group', 'VARCHAR(10)'), ('medical_reports', 'TEXT')
         ]
         
         for col_name, col_type in user_columns:
@@ -142,6 +145,7 @@ def setup_database():
             ('longitude', 'FLOAT'),
             ('is_available', 'BOOLEAN DEFAULT FALSE'),
             ('patient_queue', 'TEXT'),
+            ('pending_requests', 'TEXT'),
             ('phone', 'VARCHAR(20)')
         ]
         
@@ -224,6 +228,68 @@ def setup_database():
                 resolved_at TIMESTAMP NULL DEFAULT NULL,
                 audit_trail TEXT, -- JSON array of milestones/logs
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+
+        # 10. Consultations Table
+        print("Ensuring 'consultations' table exists...")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS consultations (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                doctor_id INT NOT NULL,
+                patient_id INT NOT NULL,
+                symptoms TEXT,
+                clinical_findings TEXT,
+                diagnosis TEXT,
+                vitals TEXT, -- JSON string
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
+                FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+
+        # 11. Prescriptions Table
+        print("Ensuring 'prescriptions' table exists...")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS prescriptions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                consultation_id INT,
+                doctor_id INT NOT NULL,
+                patient_id INT NOT NULL,
+                diagnosis TEXT,
+                lifestyle_advice TEXT,
+                diet_advice TEXT,
+                follow_up_date VARCHAR(50),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (consultation_id) REFERENCES consultations(id) ON DELETE CASCADE,
+                FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
+                FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+
+        # 12. Prescription Medicines Table
+        print("Ensuring 'prescription_medicines' table exists...")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS prescription_medicines (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                prescription_id INT NOT NULL,
+                medicine_name VARCHAR(255) NOT NULL,
+                dosage VARCHAR(100),
+                frequency VARCHAR(100),
+                duration VARCHAR(100),
+                instructions TEXT,
+                FOREIGN KEY (prescription_id) REFERENCES prescriptions(id) ON DELETE CASCADE
+            )
+        """)
+
+        # 13. Recommended Tests Table
+        print("Ensuring 'recommended_tests' table exists...")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS recommended_tests (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                prescription_id INT NOT NULL,
+                test_name VARCHAR(255) NOT NULL,
+                FOREIGN KEY (prescription_id) REFERENCES prescriptions(id) ON DELETE CASCADE
             )
         """)
 

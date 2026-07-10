@@ -156,6 +156,9 @@ export default function DoctorDashboard() {
 
     const [activePatients, setActivePatients] = useState([]);
     const [fetchingPatients, setFetchingPatients] = useState(false);
+    
+    const [pendingRequests, setPendingRequests] = useState([]);
+    const [fetchingPending, setFetchingPending] = useState(false);
 
     useEffect(() => {
         if (doctor?.patient_queue) {
@@ -166,7 +169,43 @@ export default function DoctorDashboard() {
                 setActivePatients([]);
             }
         }
-    }, [doctor?.patient_queue]);
+        if (doctor?.id) {
+            fetchPendingRequests(doctor.id);
+        }
+    }, [doctor?.patient_queue, doctor?.id]);
+
+    const fetchPendingRequests = async (docId) => {
+        setFetchingPending(true);
+        try {
+            const response = await fetch(`${API_URL}/doctor/pending_requests/${docId}`);
+            if (response.ok) {
+                const data = await response.json();
+                setPendingRequests(data);
+            }
+        } catch (e) {
+            console.error('Error fetching pending:', e);
+        } finally {
+            setFetchingPending(false);
+        }
+    };
+
+    const handleRequestAction = async (patientId, action) => {
+        try {
+            const endpoint = action === 'accept' ? '/doctor/accept_request' : '/doctor/reject_request';
+            const res = await fetch(`${API_URL}${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ doctor_id: doctor.id, patient_id: patientId })
+            });
+            if (res.ok) {
+                onRefresh(); // Refresh doctor profile to get updated queue
+            } else {
+                Alert.alert("Error", "Failed to process request");
+            }
+        } catch (e) {
+            Alert.alert("Error", "Network Error");
+        }
+    };
 
     const fetchActivePatients = async (queue) => {
         setFetchingPatients(true);
@@ -441,14 +480,64 @@ export default function DoctorDashboard() {
                         <Text style={styles.infoText}>{doctor?.email}</Text>
                     </View>
                 </View>
+                <TouchableOpacity 
+                    style={[styles.updateBtn, { marginTop: 15, backgroundColor: '#9C27B0' }]} 
+                    onPress={() => router.push({ pathname: '/doctor/prescriptions', params: { doctor_id: doctor?.id } })}
+                >
+                    <Text style={[styles.updateBtnText, { color: 'white' }]}>My Prescriptions History</Text>
+                </TouchableOpacity>
             </View>
+
+            {/* Pending Requests List */}
+            {pendingRequests.length > 0 && (
+                <View style={styles.queueSection}>
+                    <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionTitle}>Consultation Requests</Text>
+                        <View style={[styles.alertBadge, { backgroundColor: '#FF9800' }]}>
+                            <Text style={styles.alertBadgeText}>{pendingRequests.length} Pending</Text>
+                        </View>
+                    </View>
+                    
+                    <View style={styles.queueContainer}>
+                        {fetchingPending ? <ActivityIndicator color="#FF9800" style={{ margin: 20 }} /> : 
+                            pendingRequests.map((req, idx) => (
+                                <View key={idx} style={[styles.queueItem, { flexDirection: 'column', alignItems: 'stretch' }]}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                                        <View style={[styles.alertCircle, { backgroundColor: '#FF9800' }]}>
+                                            <MaterialIcons name="person" size={16} color="white" />
+                                        </View>
+                                        <View style={{ flex: 1, marginLeft: 10 }}>
+                                            <Text style={[styles.queueText, { fontSize: 17 }]}>{req.name}</Text>
+                                            <Text style={styles.queueSub}>{req.email}</Text>
+                                        </View>
+                                    </View>
+                                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                                        <TouchableOpacity 
+                                            style={[styles.modalActionBtn, { flex: 1, backgroundColor: '#4CAF50', paddingVertical: 8 }]}
+                                            onPress={() => handleRequestAction(req.id, 'accept')}
+                                        >
+                                            <Text style={[styles.modalActionText, { fontSize: 14 }]}>Accept</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity 
+                                            style={[styles.modalActionBtn, { flex: 1, backgroundColor: '#F44336', paddingVertical: 8 }]}
+                                            onPress={() => handleRequestAction(req.id, 'reject')}
+                                        >
+                                            <Text style={[styles.modalActionText, { fontSize: 14 }]}>Reject</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            ))
+                        }
+                    </View>
+                </View>
+            )}
 
             {/* Patient Alerts List */}
             <View style={styles.queueSection}>
                 <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>Active Patient Alerts</Text>
+                    <Text style={styles.sectionTitle}>Active Patients Queue</Text>
                     <View style={styles.alertBadge}>
-                        <Text style={styles.alertBadgeText}>Emergency</Text>
+                        <Text style={styles.alertBadgeText}>Active</Text>
                     </View>
                 </View>
 
@@ -563,11 +652,33 @@ export default function DoctorDashboard() {
                             {/* Contact Actions */}
                             <View style={styles.modalActions}>
                                 <TouchableOpacity
-                                    style={[styles.modalActionBtn, { backgroundColor: '#4CAF50' }]}
+                                    style={[styles.modalActionBtn, { backgroundColor: '#4CAF50', marginBottom: 10 }]}
                                     onPress={() => handleCall(selectedPatient?.phone)}
                                 >
                                     <MaterialIcons name="call" size={20} color="white" />
                                     <Text style={styles.modalActionText}>Call Patient Now</Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={[styles.modalActionBtn, { backgroundColor: '#2196F3', marginBottom: 10 }]}
+                                    onPress={() => {
+                                        setModalVisible(false);
+                                        router.push({ pathname: '/doctor/medical_history', params: { patient_id: selectedPatient.id } });
+                                    }}
+                                >
+                                    <MaterialIcons name="history" size={20} color="white" />
+                                    <Text style={styles.modalActionText}>Review Medical History</Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={[styles.modalActionBtn, { backgroundColor: '#9C27B0' }]}
+                                    onPress={() => {
+                                        setModalVisible(false);
+                                        router.push({ pathname: '/doctor/consultation', params: { patient_id: selectedPatient.id, doctor_id: doctor.id, patient_name: selectedPatient.name } });
+                                    }}
+                                >
+                                    <FontAwesome5 name="stethoscope" size={18} color="white" />
+                                    <Text style={styles.modalActionText}>Start Consultation</Text>
                                 </TouchableOpacity>
                             </View>
 
