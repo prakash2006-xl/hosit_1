@@ -116,10 +116,13 @@ export default function GuardianScreen() {
             const savedPin = await AsyncStorage.getItem('guardian_pin');
             if (savedPin) setSecurityPin(savedPin);
 
-            // Fetch emergency contacts & logs from backend
-            if (parsedProfile.id) {
+            // Fetch emergency contacts & logs from backend or local storage
+            if (parsedProfile.id && parsedProfile.id !== 0) {
                 await fetchContacts(parsedProfile.id);
                 await fetchEventHistory(parsedProfile.id);
+            } else {
+                await fetchContacts(0);
+                await fetchEventHistory(0);
             }
         } catch (e) {
             console.error('Load data fail', e);
@@ -130,6 +133,11 @@ export default function GuardianScreen() {
 
     const fetchContacts = async (userId) => {
         try {
+            if (!userId || userId === 0) {
+                const localContacts = await AsyncStorage.getItem('local_emergency_contacts');
+                setContacts(localContacts ? JSON.parse(localContacts) : []);
+                return;
+            }
             const res = await fetch(`${API_URL}/emergency/contacts?user_id=${userId}`);
             if (res.ok) {
                 const data = await res.json();
@@ -142,6 +150,46 @@ export default function GuardianScreen() {
 
     const fetchEventHistory = async (userId) => {
         try {
+            if (!userId || userId === 0) {
+                const savedEvents = await AsyncStorage.getItem('local_emergency_events');
+                const parsedEvents = savedEvents ? JSON.parse(savedEvents) : [];
+                setEventHistory(parsedEvents);
+
+                // Auto-restore any active emergency from local storage
+                const activeStr = await AsyncStorage.getItem('local_active_emergency');
+                if (activeStr) {
+                    const active = JSON.parse(activeStr);
+                    setActiveEvent({
+                        id: active.event_id,
+                        user_id: active.user_id,
+                        event_date: active.event_date,
+                        event_time: active.event_time,
+                        trigger_type: active.trigger_type,
+                        location: active.location,
+                        contacts_notified: active.contacts_notified,
+                        call_108_status: active.call_108_status,
+                        status: 'Active',
+                        latitude: active.latitude,
+                        longitude: active.longitude,
+                        battery_percentage: active.battery_percentage
+                    });
+
+                    try {
+                        const parsed = JSON.parse(active.audit_trail || '[]');
+                        setAuditLog(parsed);
+                    } catch (e) {
+                        setAuditLog([{ timestamp: active.event_time, event: "Restored active emergency." }]);
+                    }
+
+                    // Resume alert devices
+                    if (sirenEnabled) startSiren();
+                    if (flashlightEnabled) startFlashlightSOS();
+                    if (vibrateEnabled) startVibrationSOS();
+                    if (locationSharingEnabled) startLiveTracking(active.event_id);
+                }
+                return;
+            }
+
             const res = await fetch(`${API_URL}/emergency/events/${userId}`);
             if (res.ok) {
                 const data = await res.json();
@@ -498,23 +546,42 @@ export default function GuardianScreen() {
                 } catch (e) {}
 
                 const locationStr = `${loc.coords.latitude.toFixed(6)}, ${loc.coords.longitude.toFixed(6)}`;
+                const timeStr = new Date().toLocaleTimeString();
+                const milestoneText = `Live GPS Update: ${locationStr}`;
 
-                await fetch(`${API_URL}/emergency/event/update`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        event_id: eventId,
-                        latitude: loc.coords.latitude,
-                        longitude: loc.coords.longitude,
-                        location: locationStr,
-                        battery_percentage: batteryLvl,
-                        milestone: `Live GPS Update: ${locationStr}`
-                    })
-                });
+                if (userProfile.id && userProfile.id !== 0) {
+                    await fetch(`${API_URL}/emergency/event/update`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            event_id: eventId,
+                            latitude: loc.coords.latitude,
+                            longitude: loc.coords.longitude,
+                            location: locationStr,
+                            battery_percentage: batteryLvl,
+                            milestone: milestoneText
+                        })
+                    });
+                } else {
+                    const activeStr = await AsyncStorage.getItem('local_active_emergency');
+                    if (activeStr) {
+                        const activeObj = JSON.parse(activeStr);
+                        activeObj.latitude = loc.coords.latitude;
+                        activeObj.longitude = loc.coords.longitude;
+                        activeObj.location = locationStr;
+                        activeObj.battery_percentage = batteryLvl;
+                        
+                        const trail = JSON.parse(activeObj.audit_trail || '[]');
+                        trail.push({ timestamp: timeStr, event: milestoneText });
+                        activeObj.audit_trail = JSON.stringify(trail);
+                        
+                        await AsyncStorage.setItem('local_active_emergency', JSON.stringify(activeObj));
+                    }
+                }
 
                 setAuditLog(prev => [
                     ...prev,
-                    { timestamp: new Date().toLocaleTimeString(), event: `Live GPS Sync: ${locationStr}` }
+                    { timestamp: timeStr, event: `Live GPS Sync: ${locationStr}` }
                 ]);
             } catch (e) {}
         }, 30000);
@@ -548,19 +615,43 @@ export default function GuardianScreen() {
                 { timestamp: new Date().toLocaleTimeString(), event: finalLogText }
             ]);
 
-            try {
-                await fetch(`${API_URL}/emergency/event/update`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        event_id: activeEvent.id,
-                        status: 'Completed',
-                        milestone: finalLogText
-                    })
-                });
-                if (userProfile.id) fetchEventHistory(userProfile.id);
-            } catch (e) {
-                console.error(e);
+            if (userProfile.id && userProfile.id !== 0) {
+                try {
+                    await fetch(`${API_URL}/emergency/event/update`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            event_id: activeEvent.id,
+                            status: 'Completed',
+                            milestone: finalLogText
+                        })
+                    });
+                    fetchEventHistory(userProfile.id);
+                } catch (e) {
+                    console.error(e);
+                }
+            } else {
+                try {
+                    const activeStr = await AsyncStorage.getItem('local_active_emergency');
+                    if (activeStr) {
+                        const activeObj = JSON.parse(activeStr);
+                        activeObj.status = 'Completed';
+                        
+                        const trail = JSON.parse(activeObj.audit_trail || '[]');
+                        trail.push({ timestamp: new Date().toLocaleTimeString(), event: finalLogText });
+                        activeObj.audit_trail = JSON.stringify(trail);
+
+                        const savedEvents = await AsyncStorage.getItem('local_emergency_events');
+                        const parsedEvents = savedEvents ? JSON.parse(savedEvents) : [];
+                        parsedEvents.push(activeObj);
+                        
+                        await AsyncStorage.setItem('local_emergency_events', JSON.stringify(parsedEvents));
+                        await AsyncStorage.removeItem('local_active_emergency');
+                    }
+                    fetchEventHistory(0);
+                } catch (e) {
+                    console.error(e);
+                }
             }
 
             Alert.alert("SOS Resolved", "Emergency resolved successfully.");
@@ -596,6 +687,28 @@ export default function GuardianScreen() {
             return;
         }
 
+        if (!userProfile.id || userProfile.id === 0) {
+            try {
+                const newContact = {
+                    id: Date.now(),
+                    user_id: 0,
+                    name: newContactName,
+                    phone: newContactPhone,
+                    relation: newContactRelation
+                };
+                const updatedContacts = [...contacts, newContact];
+                setContacts(updatedContacts);
+                await AsyncStorage.setItem('local_emergency_contacts', JSON.stringify(updatedContacts));
+                setNewContactName('');
+                setNewContactPhone('');
+                setNewContactRelation('');
+            } catch (e) {
+                console.error(e);
+                Alert.alert("Error", "Could not save emergency contact locally.");
+            }
+            return;
+        }
+
         try {
             const res = await fetch(`${API_URL}/emergency/contacts`, {
                 method: 'POST',
@@ -621,6 +734,18 @@ export default function GuardianScreen() {
     };
 
     const handleDeleteContact = async (id) => {
+        if (!userProfile.id || userProfile.id === 0) {
+            try {
+                const updatedContacts = contacts.filter(c => c.id !== id);
+                setContacts(updatedContacts);
+                await AsyncStorage.setItem('local_emergency_contacts', JSON.stringify(updatedContacts));
+            } catch (e) {
+                console.error(e);
+                Alert.alert("Error", "Could not delete emergency contact locally.");
+            }
+            return;
+        }
+
         try {
             const res = await fetch(`${API_URL}/emergency/contacts/${id}`, {
                 method: 'DELETE'
