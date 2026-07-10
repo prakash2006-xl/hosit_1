@@ -1139,7 +1139,7 @@ def get_nearby_doctors():
 
 @app.route('/emergency/sos', methods=['POST'])
 def trigger_sos():
-    data = request.json
+    data = request.json or {}
     user_id = data.get('user_id')
     user_lat = float(data.get('latitude', 0))
     user_lon = float(data.get('longitude', 0))
@@ -1147,6 +1147,9 @@ def trigger_sos():
 
     if not doctor_id:
         return jsonify({'message': 'No doctor chosen. Please select a doctor first.'}), 400
+
+    if not user_id or user_id == 0 or user_id == '0':
+        user_id = None
 
     conn = get_db_connection()
     if not conn:
@@ -1161,16 +1164,27 @@ def trigger_sos():
         if not doc:
             return jsonify({'message': 'Selected doctor not found'}), 404
 
-        # Add user to only this doctor's patient_queue
-        queue = json.loads(doc['patient_queue']) if doc['patient_queue'] else []
-        if user_id not in queue:
-            queue.append(user_id)
-            cursor.execute("UPDATE doctors SET patient_queue = %s WHERE id = %s", (json.dumps(queue), doc['id']))
+        # Add user to only this doctor's patient_queue (if registered user)
+        if user_id:
+            queue = json.loads(doc['patient_queue']) if doc['patient_queue'] else []
+            if user_id not in queue:
+                queue.append(user_id)
+                cursor.execute("UPDATE doctors SET patient_queue = %s WHERE id = %s", (json.dumps(queue), doc['id']))
 
         # Get user details for logging into sos_alerts table
-        cursor.execute("SELECT name, age, gender, bp_status, sugar_status, activity_level FROM users WHERE id = %s", (user_id,))
-        user_info = cursor.fetchone()
-        health_details = json.dumps(user_info) if user_info else "{}"
+        if user_id:
+            cursor.execute("SELECT name, age, gender, bp_status, sugar_status, activity_level FROM users WHERE id = %s", (user_id,))
+            user_info = cursor.fetchone()
+            health_details = json.dumps(user_info) if user_info else "{}"
+        else:
+            health_details = json.dumps({
+                'name': 'Guest User',
+                'age': '',
+                'gender': '',
+                'bp_status': 'Normal',
+                'sugar_status': 'Normal',
+                'activity_level': ''
+            })
 
         # Insert record into sos_alerts table for this specific doctor
         cursor.execute(
