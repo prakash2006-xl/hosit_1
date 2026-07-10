@@ -132,8 +132,21 @@ export default function DoctorDashboard() {
     };
 
     const handleLogout = async () => {
-        await AsyncStorage.multiRemove(['doctor_token', 'doctor_profile', 'user_role']);
-        router.replace('/auth');
+        Alert.alert(
+            "Logout",
+            "Are you sure you want to log out?",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Logout",
+                    onPress: async () => {
+                        await AsyncStorage.multiRemove(['doctor_token', 'doctor_profile', 'user_role']);
+                        router.replace('/auth');
+                    },
+                    style: 'destructive'
+                }
+            ]
+        );
     };
 
     const onRefresh = async () => {
