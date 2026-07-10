@@ -494,10 +494,26 @@ export default function DashboardScreen() {
 
                 <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/nearby_doctors')}>
                     <View style={styles.actionBtnInner}>
-                        <MaterialIcons name="map" size={28} color="#4CAF50" />
-                        <Text style={styles.actionBtnText}>Find Nearby Doctors</Text>
+                        <FontAwesome5 name="user-md" size={26} color="#4CAF50" />
+                        <Text style={styles.actionBtnText}>Apply to Doctor</Text>
                     </View>
                     <MaterialIcons name="chevron-right" size={24} color="#4CAF50" />
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/general_chat')}>
+                    <View style={styles.actionBtnInner}>
+                        <FontAwesome5 name="robot" size={26} color="#03A9F4" />
+                        <Text style={styles.actionBtnText}>AI Chat Assistant</Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={24} color="#03A9F4" />
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/patient_prescriptions')}>
+                    <View style={styles.actionBtnInner}>
+                        <MaterialIcons name="receipt" size={28} color="#9C27B0" />
+                        <Text style={styles.actionBtnText}>My Prescriptions</Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={24} color="#9C27B0" />
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/history')}>
@@ -535,6 +551,8 @@ export default function DashboardScreen() {
             <FontAwesome5 name="radiation" size={24} color="white" />
             <Text style={styles.floatingSosText}>SOS</Text>
         </TouchableOpacity>
+
+
 
         {/* Countdown Overlay Modal */}
         <Modal visible={isTriggered} transparent={true} animationType="fade">
@@ -835,6 +853,22 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 12,
         marginTop: 2,
+    },
+    floatingAiBtn: {
+        position: 'absolute',
+        bottom: 30,
+        left: 30,
+        backgroundColor: '#2196F3',
+        width: 70,
+        height: 70,
+        borderRadius: 35,
+        justifyContent: 'center',
+        alignItems: 'center',
+        elevation: 8,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 6,
     },
     countdownOverlay: {
         flex: 1,

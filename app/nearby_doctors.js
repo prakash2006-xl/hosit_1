@@ -91,32 +91,30 @@ export default function NearbyDoctorsScreen() {
         }
     };
 
-    const triggerDoctorAlert = async (doctor) => {
+    const requestConsultation = async (doctor) => {
         if (!userLocation) {
             Alert.alert("Error", "Location is required to send alerts.");
             return;
         }
         setSosLoading(true);
         try {
-            const response = await fetch(`${API_URL}/emergency/sos`, {
+            const response = await fetch(`${API_URL}/patient/request_consultation`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    user_id: userProfile?.id,
-                    latitude: userLocation.latitude,
-                    longitude: userLocation.longitude,
+                    patient_id: userProfile?.id,
                     doctor_id: doctor.id
                 })
             });
             const data = await response.json();
             if (response.ok) {
-                Alert.alert("Alert Sent", data.message || `Dr. ${doctor.name} has been notified successfully.`);
+                Alert.alert("Request Sent", `Consultation request sent to Dr. ${doctor.name}. They will notify you once accepted.`);
             } else {
-                Alert.alert("Failed", data.message || "Failed to notify the doctor.");
+                Alert.alert("Failed", data.message || "Failed to request consultation.");
             }
         } catch (e) {
-            console.error('Trigger alert error:', e);
-            Alert.alert("Error", "Could not connect to emergency services");
+            console.error('Request error:', e);
+            Alert.alert("Error", "Could not connect to server");
         } finally {
             setSosLoading(false);
         }
@@ -124,19 +122,19 @@ export default function NearbyDoctorsScreen() {
 
     const handleSelectDoctor = (doctor) => {
         Alert.alert(
-            "Choose Doctor",
-            `Would you like to connect with Dr. ${doctor.name}? Only this doctor will receive the notification.`,
+            "Request Consultation",
+            `Would you like to request a consultation with Dr. ${doctor.name}?`,
             [
                 { text: "Cancel", style: "cancel" },
                 {
-                    text: "YES, CONNECT",
-                    onPress: () => triggerDoctorAlert(doctor),
+                    text: "YES, REQUEST",
+                    onPress: () => requestConsultation(doctor),
                 }
             ]
         );
     };
 
-    const handleSOS = async () => {
+    const handleQuickConnect = async () => {
         if (!userLocation) return;
         if (doctors.length === 0) {
             Alert.alert("No Doctors Available", "There are no available doctors nearby to connect with.");
@@ -146,12 +144,12 @@ export default function NearbyDoctorsScreen() {
         const nearestDoctor = doctors[0];
         Alert.alert(
             "Quick Connect",
-            `Would you like to connect with the nearest doctor, Dr. ${nearestDoctor.name}? Only this doctor will receive the notification.`,
+            `Would you like to request a consultation with the nearest doctor, Dr. ${nearestDoctor.name}?`,
             [
                 { text: "Cancel", style: "cancel" },
                 {
-                    text: "YES, CONNECT",
-                    onPress: () => triggerDoctorAlert(nearestDoctor),
+                    text: "YES, REQUEST",
+                    onPress: () => requestConsultation(nearestDoctor),
                 }
             ]
         );
@@ -233,28 +231,28 @@ export default function NearbyDoctorsScreen() {
                             ))}
                         </MapView>
                     )}
-                    <TouchableOpacity style={styles.sosButton} onPress={handleSOS} disabled={sosLoading}>
-                        {sosLoading ? <ActivityIndicator color="white" /> : <Text style={styles.sosText}>TO CONNECT</Text>}
+                    <TouchableOpacity style={styles.sosButton} onPress={handleQuickConnect} disabled={sosLoading}>
+                        {sosLoading ? <ActivityIndicator color="white" /> : <Text style={styles.sosText}>REQUEST CONSULTATION</Text>}
                     </TouchableOpacity>
                 </View>
             )}
 
             {Platform.OS === 'web' && (
                 <View style={styles.webHeader}>
-                    <MaterialIcons name="location-on" size={40} color="#2196F3" />
-                    <Text style={styles.webHeaderText}>Nearby Doctors</Text>
+                    <MaterialIcons name="local-hospital" size={40} color="#2196F3" />
+                    <Text style={styles.webHeaderText}>Apply to Doctors</Text>
                     <Text style={styles.webHeaderSubtext}>
                         {errorMsg ? <Text style={{ color: 'red', fontWeight: 'bold' }}>{errorMsg}</Text> : userLocation ? `Found ${doctors.length} doctors within 10km` : 'Getting your location...'}
                     </Text>
-                    <TouchableOpacity style={styles.webSosButton} onPress={handleSOS} disabled={sosLoading}>
-                        {sosLoading ? <ActivityIndicator color="white" /> : <Text style={styles.sosText}>QUICK CONNECT </Text>}
-                    </TouchableOpacity>x
+                    <TouchableOpacity style={styles.webSosButton} onPress={handleQuickConnect} disabled={sosLoading}>
+                        {sosLoading ? <ActivityIndicator color="white" /> : <Text style={styles.sosText}>REQUEST CONSULTATION</Text>}
+                    </TouchableOpacity>
                 </View>
             )}
 
             <View style={styles.listContainer}>
                 <View style={styles.listHeader}>
-                    <Text style={styles.listTitle}>Nearby Available Doctors</Text>
+                    <Text style={styles.listTitle}>Available Doctors</Text>
                     {userProfile?.bp_status === 'High' || userProfile?.sugar_status === 'High' ? (
                         <View style={styles.badge}>
                             <Text style={styles.badgeText}>Smart Sorted for you</Text>
