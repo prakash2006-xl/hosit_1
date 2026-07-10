@@ -143,7 +143,31 @@ export default function AuthScreen() {
                     <Text style={styles.doctorText}>Are you a Doctor? <Text style={styles.doctorLink}>Login Here</Text></Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.guestBtn} onPress={() => router.replace('/')}>
+                <TouchableOpacity style={styles.guestBtn} onPress={async () => {
+                    const guestProfile = {
+                        id: 0,
+                        name: "Guest User",
+                        email: "guest@hosit.ai",
+                        age: "",
+                        gender: "",
+                        height: "",
+                        weight: "",
+                        bmi: "",
+                        bp_status: "",
+                        sugar_status: "",
+                        activity_level: "",
+                        smoking: "",
+                        alcohol: "",
+                        sleep_hours: ""
+                    };
+                    try {
+                        await AsyncStorage.setItem('user_profile_guest', JSON.stringify(guestProfile));
+                        router.replace('/dashboard');
+                    } catch (err) {
+                        console.error("Failed to save guest profile", err);
+                        router.replace('/dashboard');
+                    }
+                }}>
                     <Text style={styles.guestText}>{t('auth.continue_guest')}</Text>
                 </TouchableOpacity>
 

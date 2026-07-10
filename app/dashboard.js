@@ -83,11 +83,18 @@ export default function DashboardScreen() {
             }
 
             // Fetch emergency contacts
-            if (userId) {
+            if (userId && userId !== 0) {
                 const contactsRes = await fetch(`${API_URL}/emergency/contacts?user_id=${userId}`);
                 if (contactsRes.ok) {
                     const contactsData = await contactsRes.json();
                     setContacts(contactsData);
+                }
+            } else {
+                try {
+                    const localContacts = await AsyncStorage.getItem('local_emergency_contacts');
+                    setContacts(localContacts ? JSON.parse(localContacts) : []);
+                } catch (e) {
+                    console.error("Failed to load local emergency contacts", e);
                 }
             }
         } catch (error) {
@@ -180,13 +187,32 @@ export default function DashboardScreen() {
         const dateStr = now.toLocaleDateString();
         const timeStr = now.toLocaleTimeString();
 
-        try {
-            await fetch(`${API_URL}/emergency/event/create`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
+        if (profile.id && profile.id !== 0) {
+            try {
+                await fetch(`${API_URL}/emergency/event/create`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        event_id: eventId,
+                        user_id: profile.id,
+                        event_date: dateStr,
+                        event_time: timeStr,
+                        trigger_type: triggerType,
+                        location: '0.0, 0.0',
+                        contacts_notified: 0,
+                        call_108_status: 'Skipped',
+                        status: 'Cancelled',
+                        latitude: 0,
+                        longitude: 0,
+                        battery_percentage: 100
+                    })
+                });
+            } catch (e) {}
+        } else {
+            try {
+                const cancelledEventObj = {
                     event_id: eventId,
-                    user_id: profile.id || 0,
+                    user_id: 0,
                     event_date: dateStr,
                     event_time: timeStr,
                     trigger_type: triggerType,
@@ -197,9 +223,13 @@ export default function DashboardScreen() {
                     latitude: 0,
                     longitude: 0,
                     battery_percentage: 100
-                })
-            });
-        } catch (e) {}
+                };
+                const savedEvents = await AsyncStorage.getItem('local_emergency_events');
+                const parsedEvents = savedEvents ? JSON.parse(savedEvents) : [];
+                parsedEvents.push(cancelledEventObj);
+                await AsyncStorage.setItem('local_emergency_events', JSON.stringify(parsedEvents));
+            } catch (e) {}
+        }
         Alert.alert("SOS Cancelled", "Emergency alarm aborted successfully.");
     };
 
@@ -252,13 +282,34 @@ export default function DashboardScreen() {
         }
 
         // Create Active Event
-        try {
-            await fetch(`${API_URL}/emergency/event/create`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
+        if (profile.id && profile.id !== 0) {
+            try {
+                await fetch(`${API_URL}/emergency/event/create`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        event_id: eventId,
+                        user_id: profile.id,
+                        event_date: dateStr,
+                        event_time: timeStr,
+                        trigger_type: triggerType,
+                        location: locationStr,
+                        contacts_notified: notifiedCount,
+                        call_108_status: callStatus108,
+                        status: 'Active',
+                        latitude: locationCoords ? locationCoords.latitude : 0,
+                        longitude: locationCoords ? locationCoords.longitude : 0,
+                        battery_percentage: batteryLvl
+                    })
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        } else {
+            try {
+                const activeEventObj = {
                     event_id: eventId,
-                    user_id: profile.id || 0,
+                    user_id: 0,
                     event_date: dateStr,
                     event_time: timeStr,
                     trigger_type: triggerType,
@@ -268,11 +319,13 @@ export default function DashboardScreen() {
                     status: 'Active',
                     latitude: locationCoords ? locationCoords.latitude : 0,
                     longitude: locationCoords ? locationCoords.longitude : 0,
-                    battery_percentage: batteryLvl
-                })
-            });
-        } catch (e) {
-            console.error(e);
+                    battery_percentage: batteryLvl,
+                    audit_trail: JSON.stringify([{ timestamp: timeStr, event: `Emergency event initialized via ${triggerType} trigger (Offline/Guest mode).` }])
+                };
+                await AsyncStorage.setItem('local_active_emergency', JSON.stringify(activeEventObj));
+            } catch (err) {
+                console.error("Failed to save local emergency event", err);
+            }
         }
 
         // Redirect to Guardian Active Console
