@@ -1,0 +1,83 @@
+{
+    "common": {
+        "hello": "नमस्ते",
+        "friend": "दोस्त",
+        "loading": "लोड हो रहा है...",
+        "save": "सहेजें",
+        "cancel": "रद्द करें",
+        "back": "पीछे",
+        "next": "आगे",
+        "finish": "समाप्त"
+    },
+    "dashboard": {
+        "title": "डैशबोर्ड",
+        "greeting": "नमस्ते, %{name}!",
+        "subtitle": "आपका स्वास्थ्य सारांश एक नज़र में।",
+        "bmi_status": "वर्तमान बीएमआई स्थिति",
+        "profile_details": "आपकी प्रोफ़ाइल का विवरण",
+        "full_history": "पूर्ण मूल्यांकन इतिहास",
+        "new_check": "नया स्वास्थ्य परीक्षण",
+        "age": "आयु",
+        "gender": "लिंग",
+        "height": "ऊंचाई",
+        "weight": "वजन",
+        "bp_status": "बीपी स्थिति",
+        "activity": "गतिविधि",
+        "obese": "मोटापा",
+        "overweight": "अधिक वजन",
+        "normal": "सामान्य",
+        "underweight": "कम वजन",
+        "na": "उपलब्ध नहीं",
+        "complete_profile": "सटीक बीएमआई के लिए प्रोफ़ाइल पूरी करें",
+        "view_recommendations": "स्वास्थ्य सिफारिशें देखें"
+    },
+    "results": {
+        "title": "स्वास्थ्य जोखिम विश्लेषण",
+        "your_inputs": "आपके स्वास्थ्य इनपुट",
+        "risk_analysis": "जोखिम विश्लेषण",
+        "personalized_recs": "व्यक्तिगत सिफारिशें",
+        "diet_plan": "आहार योजना",
+        "exercise_plan": "व्यायाम योजना",
+        "lifestyle_sleep": "जीवनशैली और नींद",
+        "start_over": "फिर से शुरू करें",
+        "analyzing": "आपके स्वास्थ्य डेटा का विश्लेषण किया जा रहा है...",
+        "risks": {
+            "diabetes": "मधुमेह का जोखिम",
+            "heart": "हृदय रोग का जोखिम",
+            "obesity": "मोटापे का जोखिम",
+            "hypertension": "उच्च रक्तचाप का जोखिम"
+        }
+    },
+    "navigation": {
+        "home": "होम",
+        "profile": "प्रोफ़ाइल",
+        "history": "इतिहास",
+        "assessment": "मूल्यांकन",
+        "login": "लॉगिन / साइन अप",
+        "onboarding": "प्रोफ़ाइल पूरी करें"
+    },
+    "auth": {
+        "welcome_back": "वापस स्वागत है",
+        "create_account": "खाता बनाएं",
+        "full_name": "पूरा नाम",
+        "name_placeholder": "आपका नाम",
+        "email_label": "ईमेल पता",
+        "email_placeholder": "email@example.com",
+        "password_label": "पासवर्ड",
+        "password_placeholder": "********",
+        "login_button": "लॉगिन",
+        "signup_button": "साइन अप",
+        "dont_have_account": "खाता नहीं है? साइन अप करें",
+        "already_have_account": "पहले से ही खाता है? लॉगिन करें",
+        "continue_guest": "अतिथि के रूप में जारी रखें",
+        "fill_fields": "कृपया सभी फ़ील्ड भरें",
+        "error_title": "त्रुटि",
+        "success_title": "सफलता",
+        "welcome_msg": "वापस स्वागत है!",
+        "account_created": "खाता सफलतापूर्वक बनाया गया!",
+        "reg_failed": "पंजीकरण विफल",
+        "auth_failed": "प्रमाणीकरण विफल",
+        "go_to_login": "लॉगिन पर जाएं",
+        "server_error": "सर्वर से कनेक्ट नहीं हो सका।"
+    }
+}

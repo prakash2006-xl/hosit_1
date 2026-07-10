@@ -1,0 +1,83 @@
+{
+    "common": {
+        "hello": "ನಮಸ್ಕಾರ",
+        "friend": "ಗೆಳೆಯರೇ",
+        "loading": "ಲೋಡ್ ಆಗುತ್ತಿದೆ...",
+        "save": "ಉಳಿಸಿ",
+        "cancel": "ರದ್ದುಮಾಡಿ",
+        "back": "ಹಿಂದಕ್ಕೆ",
+        "next": "ಮುಂದೆ",
+        "finish": "ಮುಗಿಸಿ"
+    },
+    "dashboard": {
+        "title": "ಡ್ಯಾಶ್‌ಬೋರ್ಡ್",
+        "greeting": "ನಮಸ್ಕಾರ, %{name}!",
+        "subtitle": "ನಿಮ್ಮ ಆರೋಗ್ಯದ ಸಾರಾಂಶ ಒಂದು ನೋಟದಲ್ಲಿ.",
+        "bmi_status": "ಪ್ರಸ್ತುತ ಬಿಎಂಐ ಸ್ಥಿತಿ",
+        "profile_details": "ನಿಮ್ಮ ಪ್ರೊಫೈಲ್ ವಿವರಗಳು",
+        "full_history": "ಪೂರ್ಣ ಮೌಲ್ಯಮಾಪನ ಇತಿಹಾಸ",
+        "new_check": "ಹೊಸ ಆರೋಗ್ಯ ತಪಾಸಣೆ",
+        "age": "ವಯಸ್ಸು",
+        "gender": "ಲಿಂಗ",
+        "height": "ಎತ್ತರ",
+        "weight": "ತೂಕ",
+        "bp_status": "ಬಿಪಿ ಸ್ಥಿತಿ",
+        "activity": "ಚಟುವಟಿಕೆ",
+        "obese": "ಬೊಜ್ಜು",
+        "overweight": "ಅಧಿಕ ತೂಕ",
+        "normal": "ಸಾಮಾನ್ಯ",
+        "underweight": "ಕಡಿಮೆ ತೂಕ",
+        "na": "ಲಭ್ಯವಿಲ್ಲ",
+        "complete_profile": "ನಿಖರವಾದ ಬಿಎಂಐಗಾಗಿ ಪ್ರೊಫೈಲ್ ಪೂರ್ಣಗೊಳಿಸಿ",
+        "view_recommendations": "ಆರೋಗ್ಯ ಶಿಫಾರಸುಗಳನ್ನು ನೋಡಿ"
+    },
+    "results": {
+        "title": "ಆರೋಗ್ಯ ಅಪಾಯದ ವಿಶ್ಲೇಷಣೆ",
+        "your_inputs": "ನಿಮ್ಮ ಆರೋಗ್ಯ ಇನ್‌ಪುಟ್‌ಗಳು",
+        "risk_analysis": "ಅಪಾಯದ ವಿಲೇಷಣೆ",
+        "personalized_recs": "ವೈಯಕ್ತಿಕ ಶಿಫಾರಸುಗಳು",
+        "diet_plan": "ಆಹಾರ ಯೋಜನೆ",
+        "exercise_plan": "ವ್ಯಾಯಾಮ ಯೋಜನೆ",
+        "lifestyle_sleep": "ಜೀವನಶೈಲಿ ಮತ್ತು ನಿದ್ರೆ",
+        "start_over": "ಮತ್ತೆ ಪ್ರಾರಂಭಿಸಿ",
+        "analyzing": "ನಿಮ್ಮ ಆರೋಗ್ಯ ಡೇಟಾವನ್ನು ವಿಶ್ಲೇಷಿಸಲಾಗುತ್ತಿದೆ...",
+        "risks": {
+            "diabetes": "ಮಧುಮೇಹ ಅಪಾಯ",
+            "heart": "ಹೃದ್ರോഗದ ಅಪಾಯ",
+            "obesity": "ಬೊಜ್ಜಿನ ಅಪಾಯ",
+            "hypertension": "ಅಧಿಕ ರಕ್ತದೊತ್ತಡದ ಅಪಾಯ"
+        }
+    },
+    "navigation": {
+        "home": "ಹೋಮ್",
+        "profile": "ಪ್ರొಫೈಲ್",
+        "history": "ಇತಿಹಾಸ",
+        "assessment": "ಮೌಲ್ಯಮಾಪನ",
+        "login": "ಲಾಗಿನ್ / ಸೈನ್ ಅಪ್",
+        "onboarding": "ಪ್ರೊಫೈಲ್ ಪೂರ್ಣಗೊಳಿಸಿ"
+    },
+    "auth": {
+        "welcome_back": "ಮತ್ತೆ ಸುಸ್ವಾಗತ",
+        "create_account": "ಖಾತೆ ರಚಿಸಿ",
+        "full_name": "ಪೂರ್ಣ ಹೆಸರು",
+        "name_placeholder": "ನಿಮ್ಮ ಹೆಸರು",
+        "email_label": "ಇಮೇಲ್ ವಿಳಾಸ",
+        "email_placeholder": "email@example.com",
+        "password_label": "ಪಾಸ್ವರ್ಡ್",
+        "password_placeholder": "********",
+        "login_button": "ಲಾಗಿನ್",
+        "signup_button": "ಸೈನ್ ಅಪ್",
+        "dont_have_account": "ಖಾತೆ ಇಲ್ಲವೇ? ಸೈನ್ ಅಪ್ ಮಾಡಿ",
+        "already_have_account": "ಖಾತೆ ಹೊಂದಿದ್ದೀರಾ? ಲಾಗಿನ್ ಮಾಡಿ",
+        "continue_guest": "ಅತಿಥಿಯಾಗಿ ಮುಂದುವರಿಯಿರಿ",
+        "fill_fields": "ದಯವಿಟ್ಟು ಎಲ್ಲಾ ಕ್ಷೇತ್ರಗಳನ್ನು ಭರ್ತಿ ಮಾಡಿ",
+        "error_title": "ದೋಷ",
+        "success_title": "ಯಶಸ್ಸು",
+        "welcome_msg": "ಮತ್ತೆ ಸುಸ್ವಾಗತ!",
+        "account_created": "ಖಾತೆಯನ್ನು ಯಶಸ್ವಿಯಾಗಿ ರಚಿಸಲಾಗಿದೆ!",
+        "reg_failed": "ನೋಂದಣಿ ವಿಫಲವಾಗಿದೆ",
+        "auth_failed": "ದೃಢೀಕರಣ ವಿಫಲವಾಗಿದೆ",
+        "go_to_login": "ಲಾಗಿನ್‌ಗೆ ಹೋಗಿ",
+        "server_error": "ಸರ್ವರ್‌ನೊಂದಿಗೆ ಸಂಪರ್ಕಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ."
+    }
+}

@@ -1,0 +1,5 @@
+[2026-02-18 18:55]
+File: constants/config.js
+Location: d:\hosit\preventive-healthcare-app\constants\config.js
+Update: Implemented dynamic backend URL detection using Expo Constants and platform checks. Falls back to localhost or production as needed.
+--------------------------------------------------------------------------------

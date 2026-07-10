@@ -1,0 +1,83 @@
+{
+    "common": {
+        "hello": "வணக்கம்",
+        "friend": "நண்பரே",
+        "loading": "ஏற்றுகிறது...",
+        "save": "சேமி",
+        "cancel": "ரத்துசெய்",
+        "back": "பின்னால்",
+        "next": "அடுத்து",
+        "finish": "முடிக்க"
+    },
+    "dashboard": {
+        "title": "டாஷ்போர்டு",
+        "greeting": "வணக்கம், %{name}!",
+        "subtitle": "உங்கள் சுகாதார சுருக்கம் ஒரு பார்வையில்.",
+        "bmi_status": "தற்போதைய பிஎம்ஐ நிலை",
+        "profile_details": "உங்கள் சுயவிவர விவரங்கள்",
+        "full_history": "முழு மதிப்பீட்டு வரலாறு",
+        "new_check": "புதிய சுகாதார சோதனை",
+        "age": "வயது",
+        "gender": "பாலினம்",
+        "height": "உயரம்",
+        "weight": "எடை",
+        "bp_status": "பிபி நிலை",
+        "activity": "செயல்பாடு",
+        "obese": "உடல் பருமன்",
+        "overweight": "அதிக எடை",
+        "normal": "சாதாரண",
+        "underweight": "குறைந்த எடை",
+        "na": "இல்லை",
+        "complete_profile": "துல்லியமான பிஎம்ஐக்கு சுயவிவரத்தை முடிக்கவும்",
+        "view_recommendations": "சுகாதார பரிந்துரைகளைக் காண்க"
+    },
+    "results": {
+        "title": "சுகாதார அபாய பகுப்பாய்வு",
+        "your_inputs": "உங்கள் சுகாதார உள்ளீடுகள்",
+        "risk_analysis": "அபாய பகுப்பாய்வு",
+        "personalized_recs": "தனிப்பயனாக்கப்பட்ட பரிந்துரைகள்",
+        "diet_plan": "உணவு முறை திட்டம்",
+        "exercise_plan": "உடற்பயிற்சி திட்டம்",
+        "lifestyle_sleep": "வாழ்க்கை முறை மற்றும் உறக்கம்",
+        "start_over": "மீண்டும் தொடங்குக",
+        "analyzing": "உங்கள் சுகாதாரத் தரவு பகுப்பாய்வு செய்யப்படுகிறது...",
+        "risks": {
+            "diabetes": "நீரிழிவு நோய் அபாயம்",
+            "heart": "இதய நோய் அபாயம்",
+            "obesity": "உடல் பருமன் அபாயம்",
+            "hypertension": "உயர் இரத்த அழுத்த அபாயம்"
+        }
+    },
+    "navigation": {
+        "home": "முகப்பு",
+        "profile": "சுயவிவரம்",
+        "history": "வரலாறு",
+        "assessment": "மதிப்பீடு",
+        "login": "உள்நுழைவு / பதிவு",
+        "onboarding": "சுயவிவரத்தை முடிக்கவும்"
+    },
+    "auth": {
+        "welcome_back": "மீண்டும் வருக",
+        "create_account": "கணக்கை உருவாக்கு",
+        "full_name": "முழு பெயர்",
+        "name_placeholder": "உங்கள் பெயர்",
+        "email_label": "மின்னஞ்சல் முகவரி",
+        "email_placeholder": "email@example.com",
+        "password_label": "கடவுச்சொல்",
+        "password_placeholder": "********",
+        "login_button": "உள்நுழை",
+        "signup_button": "பதிவு செய்",
+        "dont_have_account": "கணக்கு இல்லையா? பதிவு செய்",
+        "already_have_account": "ஏற்கனவே கணக்கு உள்ளதா? உள்நுழை",
+        "continue_guest": "விருந்தினராக தொடரவும்",
+        "fill_fields": "தயவுசெய்து அனைத்து புலங்களையும் நிரப்பவும்",
+        "error_title": "பிழை",
+        "success_title": "வெற்றி",
+        "welcome_msg": "மீண்டும் வருக!",
+        "account_created": "கணக்கு வெற்றிகரமாக உருவாக்கப்பட்டது!",
+        "reg_failed": "பதிவு தோல்வியுற்றது",
+        "auth_failed": "அங்கீகாரம் தோல்வியடைந்தது",
+        "go_to_login": "உள்நுழைவு பக்கத்திற்குச் செல்லவும்",
+        "server_error": "சர்வரோடு இணைக்க முடியவில்லை."
+    }
+}

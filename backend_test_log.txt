@@ -1,0 +1,60 @@
+Testing Doctor Lifecycle...
+Registering doctor: dr.test.1771107322@example.com
+Register Response: {'message': 'Doctor registered successfully', 'status': 'success'}
+Logging in doctor at 37.7749, -122.4194
+Login Response: {'doctor': {'clinic_address': None, 'clinic_name': None, 'created_at': 'Sun, 15 Feb 2026 03:45:24 GMT', 'email': 'dr.test.1771107322@example.com', 'id': 6, 'last_location_update': None, 'last_updated': 'Sun, 15 Feb 2026 03:45:24 GMT', 'latitude': 37.7749, 'longitude': -122.4194, 'name': 'Test Doctor', 'phone': None, 'specialization': 'Cardiology', 'status': 'online'}, 'message': 'Login successful', 'status': 'success'}
+Updating location to 37.775, -122.4195
+Update Response: {'message': 'Location updated', 'status': 'success'}
+Searching for doctors nearby...
+Nearby Response: {
+  "doctors": [
+    {
+      "distance": 0.0,
+      "id": 6,
+      "latitude": "37.77500000",
+      "longitude": "-122.41950000",
+      "name": "Test Doctor",
+      "specialization": "Cardiology",
+      "status": "online"
+    },
+    {
+      "distance": 0.014173684197473741,
+      "id": 2,
+      "latitude": "37.77490000",
+      "longitude": "-122.41940000",
+      "name": "Test Doctor",
+      "specialization": "Cardiology",
+      "status": "online"
+    },
+    {
+      "distance": 0.014173684197473741,
+      "id": 3,
+      "latitude": "37.77490000",
+      "longitude": "-122.41940000",
+      "name": "Test Doctor",
+      "specialization": "Cardiology",
+      "status": "online"
+    },
+    {
+      "distance": 0.014173684197473741,
+      "id": 4,
+      "latitude": "37.77490000",
+      "longitude": "-122.41940000",
+      "name": "Test Doctor",
+      "specialization": "Cardiology",
+      "status": "online"
+    },
+    {
+      "distance": 0.014173684197473741,
+      "id": 5,
+      "latitude": "37.77490000",
+      "longitude": "-122.41940000",
+      "name": "Test Doctor",
+      "specialization": "Cardiology",
+      "status": "online"
+    }
+  ],
+  "status": "success"
+}
+Found our doctor! Distance: 0.0 km
+✅ SUCCESS: Doctor found in nearby search.
