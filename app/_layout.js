@@ -28,6 +28,18 @@ function RootLayoutNav() {
             <Stack.Screen name="general_chat" options={{ title: 'Hosit General Chat' }} />
             <Stack.Screen name="image_chat" options={{ title: 'Image Analysis' }} />
             <Stack.Screen name="guardian" options={{ title: 'Guardian AI Emergency' }} />
+            <Stack.Screen name="voice_chat" options={{ title: 'Voice Chat' }} />
+            <Stack.Screen name="nearby_doctors" options={{ title: 'Nearby Doctors' }} />
+            <Stack.Screen name="doctor_auth" options={{ title: 'Doctor Login', headerShown: false }} />
+            <Stack.Screen name="doctor_dashboard" options={{ title: 'Doctor Dashboard', headerShown: false }} />
+            <Stack.Screen name="nearby_labs" options={{ title: 'Nearby Laboratories' }} />
+            <Stack.Screen name="lab_profile" options={{ title: 'Laboratory Profile' }} />
+            <Stack.Screen name="lab_auth" options={{ title: 'Laboratory Login', headerShown: false }} />
+            <Stack.Screen name="lab_dashboard" options={{ title: 'Laboratory Dashboard', headerShown: false }} />
+            <Stack.Screen name="lab_reports" options={{ title: 'Lab Reports' }} />
+            <Stack.Screen name="diet_monitoring" options={{ title: 'Diet Monitoring' }} />
+            <Stack.Screen name="diet_plan" options={{ title: 'Diet Plan' }} />
+            <Stack.Screen name="doctor_diet_prescription" options={{ title: 'Diet Prescription' }} />
         </Stack>
     );
 }

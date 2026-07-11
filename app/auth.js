@@ -19,14 +19,20 @@ export default function AuthScreen() {
     const [phone, setPhone] = useState('');
 
     const handleAuth = async () => {
-        if (!email || !password || (!isLogin && (!name || !phone))) {
+        const normalizedEmail = email.trim().toLowerCase();
+        const trimmedName = name.trim();
+        const trimmedPhone = phone.trim();
+
+        if (!normalizedEmail || !password || (!isLogin && (!trimmedName || !trimmedPhone))) {
             Alert.alert(t('auth.error_title'), t('auth.fill_fields'));
             return;
         }
 
         setLoading(true);
         const endpoint = isLogin ? '/login' : '/signup';
-        const payload = isLogin ? { email, password } : { name, email, password, phone };
+        const payload = isLogin
+            ? { email: normalizedEmail, password }
+            : { name: trimmedName, email: normalizedEmail, password, phone: trimmedPhone };
 
         try {
             const response = await fetch(`${API_URL}${endpoint}`, {
@@ -38,17 +44,16 @@ export default function AuthScreen() {
             const data = await response.json();
 
             if (response.ok) {
+                const isProfileIncomplete = isLogin && (!data.user.age || !data.user.height || !data.user.weight);
+
                 // Save User Data
                 await AsyncStorage.multiSet([
                     ['user_token', 'logged_in'],
                     ['user_profile', JSON.stringify(data.user)]
                 ]);
 
-                // Determine redirection
-                const isProfileIncomplete = isLogin && (!data.user.age || !data.user.height || !data.user.weight);
-
                 Alert.alert(t('auth.success_title'), isLogin ? t('auth.welcome_msg') : t('auth.account_created'));
-                router.replace(isLogin ? '/dashboard' : '/onboarding');
+                router.replace(isProfileIncomplete || !isLogin ? '/onboarding' : '/dashboard');
             } else {
                 if (!isLogin && data.message && data.message.includes('already signed up')) {
                     Alert.alert(
@@ -143,30 +148,33 @@ export default function AuthScreen() {
                     <Text style={styles.doctorText}>Are you a Doctor? <Text style={styles.doctorLink}>Login Here</Text></Text>
                 </TouchableOpacity>
 
+                <TouchableOpacity style={styles.labBtn} onPress={() => router.push('/lab_auth')}>
+                    <Text style={styles.labText}>Are you a Laboratory? <Text style={styles.labLink}>Login Here</Text></Text>
+                </TouchableOpacity>
+
                 <TouchableOpacity style={styles.guestBtn} onPress={async () => {
                     const guestProfile = {
                         id: 0,
-                        name: "Guest User",
-                        email: "guest@hosit.ai",
-                        age: "",
-                        gender: "",
-                        height: "",
-                        weight: "",
-                        bmi: "",
-                        bp_status: "",
-                        sugar_status: "",
-                        activity_level: "",
-                        smoking: "",
-                        alcohol: "",
-                        sleep_hours: ""
+                        name: 'Guest User',
+                        email: 'guest@hosit.ai',
+                        age: '',
+                        gender: '',
+                        height: '',
+                        weight: '',
+                        bmi: '',
+                        bp_status: '',
+                        sugar_status: '',
+                        activity_level: '',
+                        smoking: '',
+                        alcohol: '',
+                        sleep_hours: ''
                     };
-                    try {
-                        await AsyncStorage.setItem('user_profile_guest', JSON.stringify(guestProfile));
-                        router.replace('/dashboard');
-                    } catch (err) {
-                        console.error("Failed to save guest profile", err);
-                        router.replace('/dashboard');
-                    }
+
+                    await AsyncStorage.multiSet([
+                        ['user_profile_guest', JSON.stringify(guestProfile)],
+                        ['user_profile', JSON.stringify(guestProfile)]
+                    ]);
+                    router.replace('/dashboard');
                 }}>
                     <Text style={styles.guestText}>{t('auth.continue_guest')}</Text>
                 </TouchableOpacity>
@@ -270,6 +278,23 @@ const styles = StyleSheet.create({
     },
     doctorLink: {
         color: '#2196F3',
+        fontWeight: 'bold',
+    },
+    labBtn: {
+        marginTop: 12,
+        alignItems: 'center',
+        padding: 10,
+        borderWidth: 1,
+        borderColor: '#7E57C2',
+        borderRadius: 12,
+        backgroundColor: '#F3E5F5',
+    },
+    labText: {
+        color: '#444',
+        fontSize: 14,
+    },
+    labLink: {
+        color: '#7E57C2',
         fontWeight: 'bold',
     }
 });

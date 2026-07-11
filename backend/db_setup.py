@@ -1,5 +1,6 @@
 import mysql.connector
 from db_config import DB_CONFIG
+from werkzeug.security import generate_password_hash
 
 def setup_database():
     try:
@@ -43,10 +44,7 @@ def setup_database():
             ('bp_status', 'VARCHAR(50)'), ('sugar_status', 'VARCHAR(50)'),
             ('activity_level', 'VARCHAR(50)'),            ('smoking', 'VARCHAR(10)'),
             ('alcohol', 'VARCHAR(10)'), ('sleep_hours', 'FLOAT'),
-            ('phone', 'VARCHAR(20)'), ('allergies', 'TEXT'),
-            ('existing_diseases', 'TEXT'), ('current_medications', 'TEXT'),
-            ('past_surgeries', 'TEXT'), ('family_history', 'TEXT'),
-            ('blood_group', 'VARCHAR(10)'), ('medical_reports', 'TEXT')
+            ('phone', 'VARCHAR(20)')
         ]
         
         for col_name, col_type in user_columns:
@@ -145,7 +143,6 @@ def setup_database():
             ('longitude', 'FLOAT'),
             ('is_available', 'BOOLEAN DEFAULT FALSE'),
             ('patient_queue', 'TEXT'),
-            ('pending_requests', 'TEXT'),
             ('phone', 'VARCHAR(20)')
         ]
         
@@ -171,168 +168,206 @@ def setup_database():
             )
         """)
 
-        # 7. SOS Alerts Table
-        print("Ensuring 'sos_alerts' table exists...")
+        # 7. Laboratory Management Tables (separate from AI health assessment tables)
+        print("Ensuring laboratory management tables exist...")
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS sos_alerts (
+            CREATE TABLE IF NOT EXISTS laboratories (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT,
-                doctor_id INT,
-                status VARCHAR(20) DEFAULT 'Searching',
-                latitude FLOAT NOT NULL,
-                longitude FLOAT NOT NULL,
-                health_details TEXT,
+                name VARCHAR(150) NOT NULL,
+                email VARCHAR(150) NOT NULL UNIQUE,
+                password VARCHAR(255) NOT NULL,
+                logo_url TEXT,
+                rating FLOAT DEFAULT 4.5,
+                address TEXT,
+                latitude FLOAT,
+                longitude FLOAT,
+                opening_hours VARCHAR(100),
+                contact_number VARCHAR(30),
+                home_collection BOOLEAN DEFAULT TRUE,
+                description TEXT,
+                is_open BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        lab_columns = [
+            ('logo_url', 'TEXT'), ('rating', 'FLOAT DEFAULT 4.5'), ('address', 'TEXT'),
+            ('latitude', 'FLOAT'), ('longitude', 'FLOAT'), ('opening_hours', 'VARCHAR(100)'),
+            ('contact_number', 'VARCHAR(30)'), ('home_collection', 'BOOLEAN DEFAULT TRUE'),
+            ('description', 'TEXT'), ('is_open', 'BOOLEAN DEFAULT TRUE')
+        ]
+        for col_name, col_type in lab_columns:
+            cursor.execute(f"SHOW COLUMNS FROM laboratories LIKE '{col_name}'")
+            if not cursor.fetchone():
+                cursor.execute(f"ALTER TABLE laboratories ADD COLUMN {col_name} {col_type}")
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS lab_tests (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                lab_id INT NOT NULL,
+                test_name VARCHAR(150) NOT NULL,
+                price DECIMAL(10,2) NOT NULL DEFAULT 0,
+                estimated_result_time VARCHAR(50),
+                is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                accepted_at TIMESTAMP NULL DEFAULT NULL,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+                FOREIGN KEY (lab_id) REFERENCES laboratories(id) ON DELETE CASCADE
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS lab_appointments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                lab_id INT NOT NULL,
+                selected_tests TEXT NOT NULL,
+                appointment_date DATE NOT NULL,
+                appointment_time VARCHAR(20) NOT NULL,
+                status VARCHAR(30) DEFAULT 'Appointment Confirmed',
+                total_amount DECIMAL(10,2) DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (lab_id) REFERENCES laboratories(id) ON DELETE CASCADE
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS lab_reports (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                appointment_id INT,
+                user_id INT NOT NULL,
+                lab_id INT NOT NULL,
+                doctor_id INT,
+                file_name VARCHAR(255),
+                file_type VARCHAR(50),
+                file_url TEXT,
+                extracted_values TEXT,
+                analysis_json TEXT,
+                status VARCHAR(30) DEFAULT 'AI Analysis Completed',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (appointment_id) REFERENCES lab_appointments(id) ON DELETE SET NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (lab_id) REFERENCES laboratories(id) ON DELETE CASCADE,
                 FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE SET NULL
             )
         """)
 
-        # 8. Emergency Contacts Table
-        print("Ensuring 'emergency_contacts' table exists...")
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS emergency_contacts (
+            CREATE TABLE IF NOT EXISTS notifications (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
-                name VARCHAR(100) NOT NULL,
-                phone VARCHAR(20) NOT NULL,
-                relation VARCHAR(50),
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-            )
-        """)
-
-        # 9. Emergency Events Table (Immutable Audit Log)
-        print("Ensuring 'emergency_events' table exists...")
-        cursor.execute("DROP TABLE IF EXISTS emergency_events")
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS emergency_events (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                event_id VARCHAR(50) NOT NULL UNIQUE,
-                user_id INT NOT NULL,
-                event_date VARCHAR(20) NOT NULL,
-                event_time VARCHAR(20) NOT NULL,
-                trigger_type VARCHAR(50) NOT NULL, -- 'Manual' or 'Automatic'
-                location VARCHAR(100) NOT NULL, -- 'Lat, Lng'
-                contacts_notified INT DEFAULT 0,
-                call_108_status VARCHAR(50) DEFAULT 'Skipped', -- 'Called', 'Skipped', 'Failed'
-                status VARCHAR(50) NOT NULL, -- 'Completed', 'Cancelled', 'Active'
-                latitude FLOAT,
-                longitude FLOAT,
-                battery_percentage INT,
-                health_details TEXT,
-                audio_recording_uri VARCHAR(255),
-                camera_image_front VARCHAR(255),
-                camera_image_rear VARCHAR(255),
+                user_id INT,
+                doctor_id INT,
+                lab_id INT,
+                title VARCHAR(180) NOT NULL,
+                message TEXT,
+                type VARCHAR(50),
+                is_read BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                resolved_at TIMESTAMP NULL DEFAULT NULL,
-                audit_trail TEXT, -- JSON array of milestones/logs
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
+                FOREIGN KEY (lab_id) REFERENCES laboratories(id) ON DELETE CASCADE
+            )
+        """)
+
+        # 8. Diet Monitoring Tables
+        print("Ensuring diet monitoring tables exist...")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS meal_logs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                meal_type VARCHAR(50) NOT NULL,
+                meal_time VARCHAR(20),
+                calories FLOAT DEFAULT 0,
+                protein FLOAT DEFAULT 0,
+                carbs FLOAT DEFAULT 0,
+                fat FLOAT DEFAULT 0,
+                fiber FLOAT DEFAULT 0,
+                water_ml FLOAT DEFAULT 0,
+                image_url TEXT,
+                notes TEXT,
+                logged_date DATE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """)
 
-        # 10. Appointments Table
-        print("Ensuring 'appointments' table exists...")
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS appointments (
+            CREATE TABLE IF NOT EXISTS diet_prescriptions (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                patient_id INT NOT NULL,
+                user_id INT NOT NULL,
                 doctor_id INT NOT NULL,
-                appointment_date VARCHAR(20) NOT NULL,
-                appointment_time VARCHAR(20) NOT NULL,
-                symptoms TEXT,
-                token_number VARCHAR(10),
-                status VARCHAR(20) DEFAULT 'pending',
+                diet_name VARCHAR(150) NOT NULL,
+                duration_days INT DEFAULT 7,
+                goal VARCHAR(100),
+                meal_plan TEXT,
+                nutrition_summary TEXT,
+                water_intake_goal VARCHAR(100),
+                exercise_recommendation TEXT,
+                sleep_recommendation TEXT,
+                restrictions TEXT,
+                allowed_foods TEXT,
+                avoid_foods TEXT,
+                special_instructions TEXT,
+                issue_date DATE NOT NULL,
+                expiry_date DATE NOT NULL,
+                status VARCHAR(30) DEFAULT 'Active',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
                 FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE
             )
         """)
 
-        # 11. Notifications Table
-        print("Ensuring 'notifications' table exists...")
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS notifications (
+            CREATE TABLE IF NOT EXISTS diet_adherence (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 user_id INT NOT NULL,
-                title VARCHAR(100) NOT NULL,
-                message TEXT NOT NULL,
-                is_read BOOLEAN DEFAULT FALSE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-            )
-        """)
-
-        # 12. Consultations Table
-        print("Ensuring 'consultations' table exists...")
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS consultations (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                doctor_id INT NOT NULL,
-                patient_id INT NOT NULL,
-                symptoms TEXT,
-                clinical_findings TEXT,
-                diagnosis TEXT,
-                vitals TEXT, -- JSON string
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
-                FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE
-            )
-        """)
-
-        # 11. Prescriptions Table
-        print("Ensuring 'prescriptions' table exists...")
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS prescriptions (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                consultation_id INT,
-                doctor_id INT NOT NULL,
-                patient_id INT NOT NULL,
-                diagnosis TEXT,
-                lifestyle_advice TEXT,
-                diet_advice TEXT,
-                follow_up_date VARCHAR(50),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (consultation_id) REFERENCES consultations(id) ON DELETE CASCADE,
-                FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
-                FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE
-            )
-        """)
-
-        # 12. Prescription Medicines Table
-        print("Ensuring 'prescription_medicines' table exists...")
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS prescription_medicines (
-                id INT AUTO_INCREMENT PRIMARY KEY,
                 prescription_id INT NOT NULL,
-                medicine_name VARCHAR(255) NOT NULL,
-                dosage VARCHAR(100),
-                frequency VARCHAR(100),
-                duration VARCHAR(100),
-                instructions TEXT,
-                FOREIGN KEY (prescription_id) REFERENCES prescriptions(id) ON DELETE CASCADE
+                meal_type VARCHAR(50) NOT NULL,
+                completed BOOLEAN DEFAULT FALSE,
+                logged_date DATE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY unique_meal_adherence (user_id, prescription_id, meal_type, logged_date),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (prescription_id) REFERENCES diet_prescriptions(id) ON DELETE CASCADE
             )
         """)
 
-        # 13. Recommended Tests Table
-        print("Ensuring 'recommended_tests' table exists...")
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS recommended_tests (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                prescription_id INT NOT NULL,
-                test_name VARCHAR(255) NOT NULL,
-                FOREIGN KEY (prescription_id) REFERENCES prescriptions(id) ON DELETE CASCADE
-            )
-        """)
+        cursor.execute("SELECT COUNT(*) FROM laboratories")
+        if cursor.fetchone()[0] == 0:
+            lab_password = generate_password_hash('demo123')
+            labs = [
+                ('Hosit Diagnostics', 'lab@hosit.ai', lab_password, 4.8, 'MG Road, Bengaluru', 12.9716, 77.5946, '7:00 AM - 8:00 PM', '+91 90000 11111', True, 'Full-service preventive health laboratory with home sample collection.'),
+                ('CityCare Labs', 'citycare@hosit.ai', lab_password, 4.5, 'Indiranagar, Bengaluru', 12.9784, 77.6408, '8:00 AM - 7:00 PM', '+91 90000 22222', True, 'Accredited lab for routine blood tests and metabolic panels.'),
+                ('WellPath Laboratory', 'wellpath@hosit.ai', lab_password, 4.3, 'Koramangala, Bengaluru', 12.9352, 77.6245, '9:00 AM - 6:00 PM', '+91 90000 33333', False, 'Fast reporting for preventive screening packages.')
+            ]
+            cursor.executemany("""
+                INSERT INTO laboratories
+                (name, email, password, rating, address, latitude, longitude, opening_hours, contact_number, home_collection, description)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, labs)
+
+        cursor.execute("SELECT COUNT(*) FROM lab_tests")
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("SELECT id FROM laboratories ORDER BY id")
+            lab_ids = [row[0] for row in cursor.fetchall()]
+            default_tests = [
+                ('CBC', 350, '6 Hours'), ('HbA1c', 450, '12 Hours'),
+                ('Lipid Profile', 650, '24 Hours'), ('Thyroid Profile', 600, '24 Hours'),
+                ('Vitamin D', 900, '24 Hours'), ('Fasting Blood Sugar', 180, '4 Hours')
+            ]
+            for lab_id in lab_ids:
+                cursor.executemany(
+                    "INSERT INTO lab_tests (lab_id, test_name, price, estimated_result_time) VALUES (%s, %s, %s, %s)",
+                    [(lab_id, name, price, result_time) for name, price, result_time in default_tests]
+                )
 
         conn.commit()
 
-        print("\n[SUCCESS] Database and tables are ready!")
+        print("\n✅ Database and tables are ready!")
         
         cursor.close()
         conn.close()
     except Exception as e:
-        print(f"[ERROR] Error during setup: {e}")
+        print(f"❌ Error during setup: {e}")
 
 if __name__ == "__main__":
     setup_database()

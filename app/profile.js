@@ -89,11 +89,6 @@ export default function ProfileScreen() {
                     <MaterialIcons name="edit" size={20} color="#2196F3" />
                     <Text style={styles.editBtnText}>Edit Health Profile</Text>
                 </TouchableOpacity>
-
-                <TouchableOpacity style={[styles.editBtn, { marginTop: 0, borderColor: '#E8F5E9' }]} onPress={() => router.push('/medical_history')}>
-                    <MaterialIcons name="history" size={20} color="#4CAF50" />
-                    <Text style={[styles.editBtnText, { color: '#4CAF50' }]}>Update Medical History</Text>
-                </TouchableOpacity>
             </View>
 
             <View style={styles.section}>

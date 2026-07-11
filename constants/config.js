@@ -5,7 +5,7 @@
 // console.log('🌍 Using Production API URL:', API_URL);
 
 
-// export const OPENROUTER_API_KEY = 'YOUR_OPENROUTER_API_KEY';
+// export const OPENROUTER_API_KEY = Constants.expoConfig?.extra?.openRouterApiKey || '';
 // export const OPENROUTER_MODEL = 'google/gemini-2.0-flash-001';
 
 
@@ -53,10 +53,10 @@ console.log('Detected Backend API URL:', API_URL);
 // Android Emulator: 'http://10.0.2.2:5000'
 // Standard: 'http://10.20.39.105:5000'
 
-// export const OPENROUTER_API_KEY = 'YOUR_OPENROUTER_API_KEY';
+// export const OPENROUTER_API_KEY = Constants.expoConfig?.extra?.openRouterApiKey || '';
 // export const OPENROUTER_MODEL = 'google/gemini-2.0-flash-001';
 
-export const OPENROUTER_API_KEY = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY || 'YOUR_OPENROUTER_API_KEY';
+export const OPENROUTER_API_KEY = Constants.expoConfig?.extra?.openRouterApiKey || '';
 export const OPENROUTER_MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
 export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -73,5 +73,3 @@ export const OPENROUTER_VISION_FALLBACK_MODELS = [
     'meta-llama/llama-3.2-90b-vision-instruct:free',
     'openrouter/free',
 ];
-
-// Placeholder for key

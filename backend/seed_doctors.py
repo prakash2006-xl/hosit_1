@@ -8,11 +8,7 @@ def seed_doctors():
         conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor()
 
-        # Clean existing doctors to avoid duplicates and ensure exactly 10 clean records
-        print("Clearing old doctor records...")
-        cursor.execute("DELETE FROM doctors")
-
-        # 10 Sample Doctors
+        # Sample Doctors
         doctors = [
             {
                 "name": "Arjun Mehta",
@@ -20,10 +16,9 @@ def seed_doctors():
                 "password": "password123",
                 "specialization": "Cardiologist",
                 "hospital_name": "Apollo Heart Institute",
-                "lat": 12.9716,
+                "lat": 12.9716, # Bangalore center
                 "lon": 77.5946,
-                "is_available": True,
-                "phone": "+919876543210"
+                "is_available": True
             },
             {
                 "name": "Sarah Khan",
@@ -33,8 +28,7 @@ def seed_doctors():
                 "hospital_name": "Fortis Hospital",
                 "lat": 12.9800,
                 "lon": 77.6000,
-                "is_available": True,
-                "phone": "+919876543211"
+                "is_available": True
             },
             {
                 "name": "Vikram Singh",
@@ -44,103 +38,40 @@ def seed_doctors():
                 "hospital_name": "Manipal Clinic",
                 "lat": 12.9600,
                 "lon": 77.5800,
-                "is_available": True,
-                "phone": "+919876543212"
+                "is_available": True
             },
             {
                 "name": "Priya Sharma",
                 "email": "priya@hosit.ai",
                 "password": "password123",
-                "specialization": "Pediatrician",
+                "specialization": "Surgeon",
                 "hospital_name": "St. Johns Hospital",
                 "lat": 12.9500,
                 "lon": 77.5900,
-                "is_available": True,
-                "phone": "+919876543213"
-            },
-            {
-                "name": "Amit Patel",
-                "email": "amit@hosit.ai",
-                "password": "password123",
-                "specialization": "Neurologist",
-                "hospital_name": "Max Super Speciality",
-                "lat": 12.9400,
-                "lon": 77.5700,
-                "is_available": True,
-                "phone": "+919876543214"
-            },
-            {
-                "name": "Neha Reddy",
-                "email": "neha@hosit.ai",
-                "password": "password123",
-                "specialization": "Dermatologist",
-                "hospital_name": "Yashoda Hospitals",
-                "lat": 12.9300,
-                "lon": 77.5600,
-                "is_available": True,
-                "phone": "+919876543215"
-            },
-            {
-                "name": "Rajesh Kumar",
-                "email": "rajesh@hosit.ai",
-                "password": "password123",
-                "specialization": "Orthopedic Surgeon",
-                "hospital_name": "Rockland Hospital",
-                "lat": 12.9200,
-                "lon": 77.5500,
-                "is_available": True,
-                "phone": "+919876543216"
-            },
-            {
-                "name": "Kavita Rao",
-                "email": "kavita@hosit.ai",
-                "password": "password123",
-                "specialization": "Psychiatrist",
-                "hospital_name": "NIMHANS",
-                "lat": 12.9100,
-                "lon": 77.5400,
-                "is_available": True,
-                "phone": "+919876543217"
-            },
-            {
-                "name": "Manoj Bajpayee",
-                "email": "manoj@hosit.ai",
-                "password": "password123",
-                "specialization": "Endocrinologist (Diabetologist)",
-                "hospital_name": "Columbia Asia Hospital",
-                "lat": 12.9000,
-                "lon": 77.5300,
-                "is_available": True,
-                "phone": "+919876543218"
-            },
-            {
-                "name": "Deepa Joshi",
-                "email": "deepa@hosit.ai",
-                "password": "password123",
-                "specialization": "Cardiologist",
-                "hospital_name": "Cloudnine Hospital",
-                "lat": 12.8900,
-                "lon": 77.5200,
-                "is_available": True,
-                "phone": "+919876543219"
+                "is_available": False
             }
         ]
 
         print("Seeding doctors...")
         for doc in doctors:
+            # Check if exists
+            cursor.execute("SELECT id FROM doctors WHERE email = %s", (doc['email'],))
+            if cursor.fetchone():
+                print(f"Doctor {doc['name']} already exists.")
+                continue
+
             hashed = generate_password_hash(doc['password'])
             cursor.execute(
-                "INSERT INTO doctors (name, email, password, specialization, hospital_name, latitude, longitude, is_available, phone, patient_queue) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                (doc['name'], doc['email'], hashed, doc['specialization'], doc['hospital_name'], doc['lat'], doc['lon'], doc['is_available'], doc['phone'], json.dumps([]))
+                "INSERT INTO doctors (name, email, password, specialization, hospital_name, latitude, longitude, is_available, patient_queue) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (doc['name'], doc['email'], hashed, doc['specialization'], doc['hospital_name'], doc['lat'], doc['lon'], doc['is_available'], json.dumps([]))
             )
 
         conn.commit()
-        print("[SUCCESS] Doctor seeding complete! 10 sample doctors are ready.")
+        print("✅ Seeding complete!")
         cursor.close()
         conn.close()
     except Exception as e:
-        print(f"[ERROR] Seeding error: {e}")
+        print(f"❌ Seeding error: {e}")
 
 if __name__ == "__main__":
     seed_doctors()
-

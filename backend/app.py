@@ -157,9 +157,7 @@ def update_profile():
         updatable_fields = [
             'name', 'age', 'gender', 'height', 'weight', 'bmi', 
             'bp_status', 'sugar_status', 'activity_level', 
-            'smoking', 'alcohol', 'sleep_hours', 'phone',
-            'allergies', 'existing_diseases', 'current_medications', 
-            'past_surgeries', 'family_history', 'blood_group', 'medical_reports'
+            'smoking', 'alcohol', 'sleep_hours', 'phone'
         ]
         
         for field in updatable_fields:
@@ -1071,26 +1069,6 @@ def get_nearby_doctors():
 
     try:
         cursor = conn.cursor(dictionary=True)
-        
-        # Dynamically adjust doctor locations to be clustered around the querying user's location (within ~1-8 km)
-        if user_lat != 0.0 or user_lon != 0.0:
-            import random
-            cursor.execute("SELECT id FROM doctors")
-            doc_rows = cursor.fetchall()
-            for row in doc_rows:
-                doc_id = row['id']
-                # Use a stable seed based on doctor ID so coordinates are consistent on subsequent calls
-                random.seed(doc_id * 789)
-                offset_lat = (random.random() - 0.5) * 0.12 # ~ -6km to +6km
-                offset_lon = (random.random() - 0.5) * 0.12 # ~ -6km to +6km
-                new_lat = user_lat + offset_lat
-                new_lon = user_lon + offset_lon
-                cursor.execute(
-                    "UPDATE doctors SET latitude = %s, longitude = %s WHERE id = %s",
-                    (new_lat, new_lon, doc_id)
-                )
-            conn.commit()
-
         # Fetch only available doctors
         cursor.execute("SELECT id, name, email, specialization, hospital_name, latitude, longitude, is_available, phone FROM doctors WHERE is_available = TRUE")
         doctors = cursor.fetchall()
@@ -1146,17 +1124,10 @@ def get_nearby_doctors():
 
 @app.route('/emergency/sos', methods=['POST'])
 def trigger_sos():
-    data = request.json or {}
+    data = request.json
     user_id = data.get('user_id')
     user_lat = float(data.get('latitude', 0))
     user_lon = float(data.get('longitude', 0))
-    doctor_id = data.get('doctor_id')
-
-    if not doctor_id:
-        return jsonify({'message': 'No doctor chosen. Please select a doctor first.'}), 400
-
-    if not user_id or user_id == 0 or user_id == '0':
-        user_id = None
 
     conn = get_db_connection()
     if not conn:
@@ -1164,46 +1135,34 @@ def trigger_sos():
 
     try:
         cursor = conn.cursor(dictionary=True)
-        # Fetch the selected doctor
-        cursor.execute("SELECT id, name, patient_queue FROM doctors WHERE id = %s", (doctor_id,))
-        doc = cursor.fetchone()
+        # Find nearest 3 online doctors
+        cursor.execute("SELECT id, name, latitude, longitude FROM doctors WHERE is_available = TRUE")
+        doctors = cursor.fetchall()
 
-        if not doc:
-            return jsonify({'message': 'Selected doctor not found'}), 404
+        for doc in doctors:
+            if doc['latitude'] and doc['longitude']:
+                doc['distance'] = haversine(user_lat, user_lon, doc['latitude'], doc['longitude'])
+            else:
+                doc['distance'] = 9999
 
-        # Add user to only this doctor's patient_queue (if registered user)
-        if user_id:
-            queue = json.loads(doc['patient_queue']) if doc['patient_queue'] else []
+        doctors.sort(key=lambda x: x['distance'])
+        nearest_doctors = doctors[:3]
+
+        # In a real app, send push notifications here.
+        # For now, we simulate by adding user to doctors' patient_queue
+        for doc in nearest_doctors:
+            cursor.execute("SELECT patient_queue FROM doctors WHERE id = %s", (doc['id'],))
+            row = cursor.fetchone()
+            queue = json.loads(row['patient_queue']) if row and row['patient_queue'] else []
             if user_id not in queue:
                 queue.append(user_id)
                 cursor.execute("UPDATE doctors SET patient_queue = %s WHERE id = %s", (json.dumps(queue), doc['id']))
-
-        # Get user details for logging into sos_alerts table
-        if user_id:
-            cursor.execute("SELECT name, age, gender, bp_status, sugar_status, activity_level FROM users WHERE id = %s", (user_id,))
-            user_info = cursor.fetchone()
-            health_details = json.dumps(user_info) if user_info else "{}"
-        else:
-            health_details = json.dumps({
-                'name': 'Guest User',
-                'age': '',
-                'gender': '',
-                'bp_status': 'Normal',
-                'sugar_status': 'Normal',
-                'activity_level': ''
-            })
-
-        # Insert record into sos_alerts table for this specific doctor
-        cursor.execute(
-            "INSERT INTO sos_alerts (user_id, doctor_id, status, latitude, longitude, health_details) VALUES (%s, %s, %s, %s, %s, %s)",
-            (user_id, doc['id'], 'Searching', user_lat, user_lon, health_details)
-        )
         
         conn.commit()
         return jsonify({
             'status': 'success', 
-            'message': f'Connection request and alert successfully sent to Dr. {doc["name"]}',
-            'doctors_alerted': [doc['name']]
+            'message': f'SOS sent to {len(nearest_doctors)} nearest doctors',
+            'doctors_alerted': [d['name'] for d in nearest_doctors]
         })
     except Exception as e:
         return jsonify({'message': str(e)}), 500
@@ -1477,12 +1436,468 @@ def remove_activity(activity_id):
         cursor.close()
         conn.close()
 
-# ==========================================
-# EMERGENCY / GUARDIAN AI ENDPOINTS
-# ==========================================
+# --- Laboratory, Reports, Notifications, and Diet Features ---
 
-@app.route('/emergency/contacts', methods=['GET'])
-def get_emergency_contacts():
+def serialize_record(record):
+    if not record:
+        return record
+    for key, value in list(record.items()):
+        if hasattr(value, 'isoformat'):
+            record[key] = value.isoformat()
+        elif hasattr(value, '__float__') and value.__class__.__name__ == 'Decimal':
+            record[key] = float(value)
+    return record
+
+def create_notification(cursor, user_id=None, doctor_id=None, lab_id=None, title='', message='', ntype='general'):
+    cursor.execute(
+        """
+        INSERT INTO notifications (user_id, doctor_id, lab_id, title, message, type)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """,
+        (user_id, doctor_id, lab_id, title, message, ntype)
+    )
+
+def build_report_analysis(report_name, previous_reports=None):
+    previous_reports = previous_reports or []
+    previous_count = len(previous_reports)
+    values = [
+        {
+            'marker': 'Hemoglobin',
+            'normal_range': '13-17 g/dL',
+            'current_value': '12.6 g/dL',
+            'status': 'Low',
+            'trend': 'Slight decrease' if previous_count else 'Baseline',
+            'severity': 'Mild',
+            'possible_reason': 'May relate to iron intake, recent illness, or hydration status.',
+            'recommendation': 'Discuss with a doctor if fatigue, dizziness, or breathlessness is present.'
+        },
+        {
+            'marker': 'Blood Sugar',
+            'normal_range': '70-100 mg/dL fasting',
+            'current_value': '108 mg/dL',
+            'status': 'Borderline',
+            'trend': 'Increase' if previous_count else 'Baseline',
+            'severity': 'Moderate',
+            'possible_reason': 'Recent meal timing, stress, sleep, or insulin resistance can influence readings.',
+            'recommendation': 'Repeat testing as advised and consult a doctor if values remain elevated.'
+        },
+        {
+            'marker': 'Vitamin D',
+            'normal_range': '30-100 ng/mL',
+            'current_value': '24 ng/mL',
+            'status': 'Low',
+            'trend': 'Stable' if previous_count else 'Baseline',
+            'severity': 'Mild',
+            'possible_reason': 'Limited sunlight exposure or low dietary intake may contribute.',
+            'recommendation': 'Ask a clinician about safe supplementation and follow-up testing.'
+        }
+    ]
+    return {
+        'report_name': report_name,
+        'summary': 'AI extracted key values, compared available history, and highlighted abnormal or borderline markers.',
+        'values': values,
+        'disclaimer': 'This AI analysis is informational only and does not diagnose disease. Consult a qualified medical professional.'
+    }
+
+@app.route('/labs/nearby', methods=['GET'])
+def get_nearby_labs():
+    user_lat = float(request.args.get('lat', 0) or 0)
+    user_lon = float(request.args.get('lon', 0) or 0)
+    max_distance = float(request.args.get('distance', 25) or 25)
+    min_rating = float(request.args.get('rating', 0) or 0)
+    open_now = request.args.get('open_now') == 'true'
+    home_collection = request.args.get('home_collection') == 'true'
+    search = (request.args.get('search') or '').strip().lower()
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'message': 'Database connection failed'}), 500
+
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT l.*, COUNT(t.id) as tests_available
+            FROM laboratories l
+            LEFT JOIN lab_tests t ON l.id = t.lab_id AND t.is_active = TRUE
+            GROUP BY l.id
+        """)
+        labs = cursor.fetchall()
+
+        filtered = []
+        for lab in labs:
+            lab = serialize_record(lab)
+            lat = lab.get('latitude')
+            lon = lab.get('longitude')
+            distance = haversine(user_lat, user_lon, float(lat), float(lon)) if lat and lon and user_lat and user_lon else 0
+            lab['distance'] = round(distance, 2)
+
+            if distance and distance > max_distance:
+                continue
+            if float(lab.get('rating') or 0) < min_rating:
+                continue
+            if open_now and not lab.get('is_open'):
+                continue
+            if home_collection and not lab.get('home_collection'):
+                continue
+
+            if search:
+                cursor.execute(
+                    "SELECT COUNT(*) as matches FROM lab_tests WHERE lab_id = %s AND is_active = TRUE AND LOWER(test_name) LIKE %s",
+                    (lab['id'], f"%{search}%")
+                )
+                if search not in (lab.get('name') or '').lower() and cursor.fetchone()['matches'] == 0:
+                    continue
+
+            lab.pop('password', None)
+            filtered.append(lab)
+
+        filtered.sort(key=lambda item: item.get('distance', 0))
+        return jsonify(filtered)
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/labs/<int:lab_id>', methods=['GET'])
+def get_lab_profile(lab_id):
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'message': 'Database connection failed'}), 500
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM laboratories WHERE id = %s", (lab_id,))
+        lab = cursor.fetchone()
+        if not lab:
+            return jsonify({'message': 'Laboratory not found'}), 404
+        lab = serialize_record(lab)
+        lab.pop('password', None)
+        cursor.execute("SELECT id, test_name, price, estimated_result_time, is_active FROM lab_tests WHERE lab_id = %s AND is_active = TRUE ORDER BY test_name", (lab_id,))
+        tests = [serialize_record(row) for row in cursor.fetchall()]
+        lab['tests'] = tests
+        return jsonify(lab)
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/labs/appointments', methods=['POST'])
+def book_lab_appointment():
+    data = request.json
+    user_id = data.get('user_id')
+    lab_id = data.get('lab_id')
+    test_ids = data.get('test_ids', [])
+    appointment_date = data.get('appointment_date')
+    appointment_time = data.get('appointment_time')
+
+    if not all([user_id, lab_id, test_ids, appointment_date, appointment_time]):
+        return jsonify({'message': 'Missing required fields'}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'message': 'Database connection failed'}), 500
+    try:
+        cursor = conn.cursor(dictionary=True)
+        placeholders = ','.join(['%s'] * len(test_ids))
+        cursor.execute(f"SELECT id, test_name, price, estimated_result_time FROM lab_tests WHERE lab_id = %s AND id IN ({placeholders})", tuple([lab_id] + test_ids))
+        tests = [serialize_record(row) for row in cursor.fetchall()]
+        if not tests:
+            return jsonify({'message': 'No valid tests selected'}), 400
+        total = sum(float(test.get('price') or 0) for test in tests)
+        cursor.execute("""
+            INSERT INTO lab_appointments (user_id, lab_id, selected_tests, appointment_date, appointment_time, total_amount)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (user_id, lab_id, json.dumps(tests), appointment_date, appointment_time, total))
+        appointment_id = cursor.lastrowid
+        create_notification(cursor, user_id=user_id, lab_id=lab_id, title='Appointment Confirmed', message='Your laboratory appointment has been confirmed.', ntype='lab')
+        conn.commit()
+        return jsonify({'status': 'success', 'appointment_id': appointment_id, 'tests': tests, 'total_amount': total}), 201
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/lab/login', methods=['POST'])
+def lab_login():
+    data = request.json
+    email = (data.get('email') or '').strip().lower()
+    password = data.get('password')
+    if not email or not password:
+        return jsonify({'message': 'Missing email or password'}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'message': 'Database connection failed'}), 500
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM laboratories WHERE email = %s", (email,))
+        lab = cursor.fetchone()
+        if lab and check_password_hash(lab['password'], password):
+            lab = serialize_record(lab)
+            lab.pop('password', None)
+            token = jwt.encode({
+                'lab_id': lab['id'],
+                'role': 'laboratory',
+                'exp': datetime.datetime.utcnow() + datetime.timedelta(days=7)
+            }, SECRET_KEY, algorithm='HS256')
+            return jsonify({'status': 'success', 'message': 'Login successful', 'lab': lab, 'token': token})
+        return jsonify({'message': 'Invalid email or password'}), 401
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/lab/dashboard/<int:lab_id>', methods=['GET'])
+def lab_dashboard(lab_id):
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'message': 'Database connection failed'}), 500
+    try:
+        cursor = conn.cursor(dictionary=True)
+        today = datetime.date.today().isoformat()
+        cursor.execute("SELECT COUNT(*) as count FROM lab_appointments WHERE lab_id = %s AND appointment_date = %s", (lab_id, today))
+        todays = cursor.fetchone()['count']
+        cursor.execute("SELECT COUNT(*) as count FROM lab_reports WHERE lab_id = %s", (lab_id,))
+        completed = cursor.fetchone()['count']
+        cursor.execute("SELECT COALESCE(SUM(total_amount), 0) as revenue FROM lab_appointments WHERE lab_id = %s AND appointment_date = %s", (lab_id, today))
+        revenue = float(cursor.fetchone()['revenue'] or 0)
+        cursor.execute("""
+            SELECT la.*, u.name as patient_name, u.email as patient_email
+            FROM lab_appointments la
+            JOIN users u ON la.user_id = u.id
+            WHERE la.lab_id = %s
+            ORDER BY la.appointment_date DESC, la.appointment_time DESC
+            LIMIT 30
+        """, (lab_id,))
+        appointments = [serialize_record(row) for row in cursor.fetchall()]
+        return jsonify({
+            'todays_appointments': todays,
+            'pending_tests': max(todays - completed, 0),
+            'completed_reports': completed,
+            'pending_uploads': max(todays - completed, 0),
+            'todays_revenue': revenue,
+            'appointments': appointments
+        })
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/lab/reports/upload', methods=['POST'])
+def upload_lab_report():
+    data = request.json
+    appointment_id = data.get('appointment_id')
+    user_id = data.get('user_id')
+    lab_id = data.get('lab_id')
+    doctor_id = data.get('doctor_id')
+    file_name = data.get('file_name') or 'Lab Report'
+    file_type = data.get('file_type') or 'document'
+    file_url = data.get('file_url') or ''
+
+    if not all([user_id, lab_id, file_name]):
+        return jsonify({'message': 'Missing required fields'}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'message': 'Database connection failed'}), 500
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT analysis_json FROM lab_reports WHERE user_id = %s ORDER BY created_at DESC LIMIT 3", (user_id,))
+        previous = cursor.fetchall()
+        analysis = build_report_analysis(file_name, previous)
+        extracted_values = json.dumps(analysis['values'])
+        cursor.execute("""
+            INSERT INTO lab_reports
+            (appointment_id, user_id, lab_id, doctor_id, file_name, file_type, file_url, extracted_values, analysis_json)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (appointment_id, user_id, lab_id, doctor_id, file_name, file_type, file_url, extracted_values, json.dumps(analysis)))
+        report_id = cursor.lastrowid
+        if appointment_id:
+            cursor.execute("UPDATE lab_appointments SET status = %s WHERE id = %s", ('Report Uploaded', appointment_id))
+        create_notification(cursor, user_id=user_id, lab_id=lab_id, title='Report Uploaded', message=f'{file_name} is available in your report history.', ntype='lab')
+        create_notification(cursor, user_id=user_id, lab_id=lab_id, title='AI Analysis Completed', message='Your AI lab report analysis is ready.', ntype='analysis')
+        if doctor_id:
+            create_notification(cursor, doctor_id=doctor_id, lab_id=lab_id, title='Patient Report Uploaded', message=f'A new report is available for patient #{user_id}.', ntype='doctor')
+        conn.commit()
+        return jsonify({'status': 'success', 'report_id': report_id, 'analysis': analysis}), 201
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/lab/tests/<int:test_id>', methods=['PUT'])
+def update_lab_test(test_id):
+    data = request.json
+    allowed = {'test_name', 'price', 'estimated_result_time', 'is_active'}
+    fields = [field for field in allowed if field in data]
+    if not fields:
+        return jsonify({'message': 'No fields to update'}), 400
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'message': 'Database connection failed'}), 500
+    try:
+        cursor = conn.cursor()
+        values = [data[field] for field in fields]
+        values.append(test_id)
+        cursor.execute(f"UPDATE lab_tests SET {', '.join([field + ' = %s' for field in fields])} WHERE id = %s", tuple(values))
+        conn.commit()
+        return jsonify({'status': 'success', 'message': 'Test updated'})
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/user/notifications', methods=['GET'])
+def get_user_notifications():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify([])
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'message': 'Database connection failed'}), 500
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM notifications WHERE user_id = %s ORDER BY created_at DESC LIMIT 50", (user_id,))
+        return jsonify([serialize_record(row) for row in cursor.fetchall()])
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/user/lab-reports', methods=['GET'])
+def get_user_lab_reports():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify([])
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'message': 'Database connection failed'}), 500
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT lr.*, l.name as lab_name
+            FROM lab_reports lr
+            JOIN laboratories l ON lr.lab_id = l.id
+            WHERE lr.user_id = %s
+            ORDER BY lr.created_at DESC
+        """, (user_id,))
+        reports = []
+        for row in cursor.fetchall():
+            row = serialize_record(row)
+            row['analysis'] = json.loads(row['analysis_json']) if row.get('analysis_json') else None
+            reports.append(row)
+        return jsonify(reports)
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/diet/meals', methods=['POST'])
+def save_meal_log():
+    data = request.json
+    user_id = data.get('user_id')
+    meal_type = data.get('meal_type')
+    logged_date = data.get('logged_date') or datetime.date.today().isoformat()
+    if not all([user_id, meal_type]):
+        return jsonify({'message': 'Missing required fields'}), 400
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'message': 'Database connection failed'}), 500
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO meal_logs
+            (user_id, meal_type, meal_time, calories, protein, carbs, fat, fiber, water_ml, image_url, notes, logged_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            user_id, meal_type, data.get('meal_time'), data.get('calories', 0),
+            data.get('protein', 0), data.get('carbs', 0), data.get('fat', 0),
+            data.get('fiber', 0), data.get('water_ml', 0), data.get('image_url'), data.get('notes'), logged_date
+        ))
+        meal_id = cursor.lastrowid
+        if float(data.get('calories') or 0) > 900:
+            create_notification(cursor, user_id=user_id, title='Calorie Warning', message='This meal is high in calories. Balance your next meals.', ntype='diet')
+        conn.commit()
+        return jsonify({'status': 'success', 'meal_id': meal_id}), 201
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/diet/summary', methods=['GET'])
+def get_diet_summary():
+    user_id = request.args.get('user_id')
+    day = request.args.get('date') or datetime.date.today().isoformat()
+    if not user_id:
+        return jsonify({'message': 'user_id is required'}), 400
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'message': 'Database connection failed'}), 500
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM meal_logs WHERE user_id = %s AND logged_date = %s ORDER BY created_at DESC", (user_id, day))
+        meals = [serialize_record(row) for row in cursor.fetchall()]
+        totals = {'calories': 0, 'protein': 0, 'carbs': 0, 'fat': 0, 'fiber': 0, 'water_ml': 0}
+        for meal in meals:
+            for key in totals:
+                totals[key] += float(meal.get(key) or 0)
+        score = max(0, min(100, round(100 - abs(1900 - totals['calories']) / 35 - max(0, 75 - totals['protein']) - max(0, 30 - totals['fiber']) * 1.5)))
+        return jsonify({'meals': meals, 'totals': totals, 'nutrition_score': score, 'meal_adherence': round((len(set(m['meal_type'] for m in meals)) / 5) * 100)})
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/doctor/diet-prescription', methods=['POST'])
+def create_diet_prescription():
+    data = request.json
+    user_id = data.get('user_id')
+    doctor_id = data.get('doctor_id')
+    diet_name = data.get('diet_name')
+    if not all([user_id, doctor_id, diet_name]):
+        return jsonify({'message': 'Missing required fields'}), 400
+    duration = int(data.get('duration_days') or 7)
+    issue_date = datetime.date.today()
+    expiry_date = issue_date + datetime.timedelta(days=duration)
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'message': 'Database connection failed'}), 500
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO diet_prescriptions
+            (user_id, doctor_id, diet_name, duration_days, goal, meal_plan, nutrition_summary, water_intake_goal,
+             exercise_recommendation, sleep_recommendation, restrictions, allowed_foods, avoid_foods, special_instructions,
+             issue_date, expiry_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            user_id, doctor_id, diet_name, duration, data.get('goal'), json.dumps(data.get('meal_plan', {})),
+            json.dumps(data.get('nutrition_summary', {})), data.get('water_intake_goal'), data.get('exercise_recommendation'),
+            data.get('sleep_recommendation'), data.get('restrictions'), data.get('allowed_foods'),
+            data.get('avoid_foods'), data.get('special_instructions'), issue_date, expiry_date
+        ))
+        prescription_id = cursor.lastrowid
+        create_notification(cursor, user_id=user_id, doctor_id=doctor_id, title='Diet Plan Issued', message='Your doctor issued a new diet plan.', ntype='diet')
+        conn.commit()
+        return jsonify({'status': 'success', 'prescription_id': prescription_id}), 201
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/diet/plan', methods=['GET'])
+def get_current_diet_plan():
     user_id = request.args.get('user_id')
     if not user_id:
         return jsonify({'message': 'user_id is required'}), 400
@@ -1491,555 +1906,56 @@ def get_emergency_contacts():
         return jsonify({'message': 'Database connection failed'}), 500
     try:
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM emergency_contacts WHERE user_id = %s", (user_id,))
-        contacts = cursor.fetchall()
-        return jsonify(contacts)
+        cursor.execute("""
+            SELECT dp.*, d.name as doctor_name
+            FROM diet_prescriptions dp
+            JOIN doctors d ON dp.doctor_id = d.id
+            WHERE dp.user_id = %s AND dp.status = 'Active'
+            ORDER BY dp.issue_date DESC
+            LIMIT 1
+        """, (user_id,))
+        plan = cursor.fetchone()
+        if not plan:
+            return jsonify({})
+        plan = serialize_record(plan)
+        plan['meal_plan'] = json.loads(plan['meal_plan']) if plan.get('meal_plan') else {}
+        plan['nutrition_summary'] = json.loads(plan['nutrition_summary']) if plan.get('nutrition_summary') else {}
+        return jsonify(plan)
     except Exception as e:
         return jsonify({'message': str(e)}), 500
     finally:
         cursor.close()
         conn.close()
 
-@app.route('/emergency/contacts', methods=['POST'])
-def add_emergency_contact():
+@app.route('/diet/adherence', methods=['POST'])
+def update_diet_adherence():
     data = request.json
     user_id = data.get('user_id')
-    name = data.get('name')
-    phone = data.get('phone')
-    relation = data.get('relation', '')
-
-    if not user_id or not name or not phone:
-        return jsonify({'message': 'user_id, name, and phone are required'}), 400
-
+    prescription_id = data.get('prescription_id')
+    meal_type = data.get('meal_type')
+    logged_date = data.get('logged_date') or datetime.date.today().isoformat()
+    completed = data.get('completed', True)
+    if not all([user_id, prescription_id, meal_type]):
+        return jsonify({'message': 'Missing required fields'}), 400
     conn = get_db_connection()
     if not conn:
         return jsonify({'message': 'Database connection failed'}), 500
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO emergency_contacts (user_id, name, phone, relation) VALUES (%s, %s, %s, %s)",
-            (user_id, name, phone, relation)
-        )
-        conn.commit()
-        return jsonify({'status': 'success', 'message': 'Contact added successfully'})
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
-    finally:
-        cursor.close()
-        conn.close()
-
-@app.route('/emergency/contacts/<int:contact_id>', methods=['DELETE'])
-def delete_emergency_contact(contact_id):
-    conn = get_db_connection()
-    if not conn:
-        return jsonify({'message': 'Database connection failed'}), 500
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM emergency_contacts WHERE id = %s", (contact_id,))
-        conn.commit()
-        return jsonify({'status': 'success', 'message': 'Contact deleted successfully'})
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
-    finally:
-        cursor.close()
-        conn.close()
-
-@app.route('/emergency/event/create', methods=['POST'])
-def create_emergency_event():
-    data = request.json
-    event_id = data.get('event_id')
-    user_id = data.get('user_id')
-    event_date = data.get('event_date')
-    event_time = data.get('event_time')
-    trigger_type = data.get('trigger_type', 'Manual')
-    location = data.get('location', '0.0, 0.0')
-    contacts_notified = data.get('contacts_notified', 0)
-    call_108_status = data.get('call_108_status', 'Skipped')
-    status = data.get('status', 'Active')
-    latitude = data.get('latitude')
-    longitude = data.get('longitude')
-    battery_percentage = data.get('battery_percentage')
-    health_details = data.get('health_details', '')
-    
-    milestone = f"Emergency {trigger_type} triggered. Status: {status}."
-    audit_trail = json.dumps([{"timestamp": str(datetime.datetime.now()), "event": milestone}])
-
-    if not event_id or not user_id or not event_date or not event_time:
-        return jsonify({'message': 'event_id, user_id, event_date, and event_time are required'}), 400
-
-    conn = get_db_connection()
-    if not conn:
-        return jsonify({'message': 'Database connection failed'}), 500
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            """INSERT INTO emergency_events 
-            (event_id, user_id, event_date, event_time, trigger_type, location, contacts_notified, call_108_status, status, latitude, longitude, battery_percentage, health_details, audit_trail) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-            (event_id, user_id, event_date, event_time, trigger_type, location, contacts_notified, call_108_status, status, latitude, longitude, battery_percentage, health_details, audit_trail)
-        )
-        conn.commit()
-        return jsonify({'status': 'success', 'message': 'Emergency log created'})
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
-    finally:
-        cursor.close()
-        conn.close()
-
-@app.route('/emergency/event/update', methods=['POST'])
-def update_emergency_event():
-    data = request.json
-    event_id = data.get('event_id')
-    status = data.get('status')
-    location = data.get('location')
-    contacts_notified = data.get('contacts_notified')
-    call_108_status = data.get('call_108_status')
-    latitude = data.get('latitude')
-    longitude = data.get('longitude')
-    battery_percentage = data.get('battery_percentage')
-    audio_recording_uri = data.get('audio_recording_uri')
-    camera_image_front = data.get('camera_image_front')
-    camera_image_rear = data.get('camera_image_rear')
-    milestone_event = data.get('milestone')
-
-    if not event_id:
-        return jsonify({'message': 'event_id is required'}), 400
-
-    conn = get_db_connection()
-    if not conn:
-        return jsonify({'message': 'Database connection failed'}), 500
-    try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT audit_trail FROM emergency_events WHERE event_id = %s", (event_id,))
-        row = cursor.fetchone()
-        if not row:
-            return jsonify({'message': 'Event not found'}), 404
-        
-        trail = json.loads(row['audit_trail']) if row['audit_trail'] else []
-        if milestone_event:
-            trail.append({"timestamp": str(datetime.datetime.now()), "event": milestone_event})
-        
-        update_fields = []
-        params = []
-        
-        if status:
-            update_fields.append("status = %s")
-            params.append(status)
-            if status == 'Completed' or status == 'Cancelled' or status == 'Resolved':
-                update_fields.append("resolved_at = CURRENT_TIMESTAMP")
-        if location:
-            update_fields.append("location = %s")
-            params.append(location)
-        if contacts_notified is not None:
-            update_fields.append("contacts_notified = %s")
-            params.append(contacts_notified)
-        if call_108_status:
-            update_fields.append("call_108_status = %s")
-            params.append(call_108_status)
-        if latitude is not None:
-            update_fields.append("latitude = %s")
-            params.append(latitude)
-        if longitude is not None:
-            update_fields.append("longitude = %s")
-            params.append(longitude)
-        if battery_percentage is not None:
-            update_fields.append("battery_percentage = %s")
-            params.append(battery_percentage)
-        if audio_recording_uri:
-            update_fields.append("audio_recording_uri = %s")
-            params.append(audio_recording_uri)
-        if camera_image_front:
-            update_fields.append("camera_image_front = %s")
-            params.append(camera_image_front)
-        if camera_image_rear:
-            update_fields.append("camera_image_rear = %s")
-            params.append(camera_image_rear)
-            
-        update_fields.append("audit_trail = %s")
-        params.append(json.dumps(trail))
-        
-        params.append(event_id)
-        
-        query = f"UPDATE emergency_events SET {', '.join(update_fields)} WHERE event_id = %s"
-        cursor.execute(query, tuple(params))
-        conn.commit()
-        return jsonify({'status': 'success', 'message': 'Emergency log updated'})
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
-    finally:
-        cursor.close()
-        conn.close()
-
-@app.route('/emergency/events/<int:user_id>', methods=['GET'])
-def get_user_emergency_events(user_id):
-    conn = get_db_connection()
-    if not conn:
-        return jsonify({'message': 'Database connection failed'}), 500
-    try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM emergency_events WHERE user_id = %s ORDER BY created_at DESC", (user_id,))
-        events = cursor.fetchall()
-        return jsonify(events)
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
-    finally:
-        cursor.close()
-        conn.close()
-
-# --- PRESCRIPTION MODULE ENDPOINTS ---
-
-@app.route('/patient/<int:user_id>/medical-history', methods=['GET'])
-def get_medical_history(user_id):
-    conn = get_db_connection()
-    if not conn: return jsonify({'message': 'DB Error'}), 500
-    try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT allergies, existing_diseases, current_medications, past_surgeries, family_history, blood_group, medical_reports FROM users WHERE id = %s", (user_id,))
-        row = cursor.fetchone()
-        return jsonify(row if row else {})
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
-    finally:
-        if 'cursor' in locals(): cursor.close()
-        if 'conn' in locals(): conn.close()
-
-@app.route('/doctor/patient/<int:patient_id>/profile', methods=['GET'])
-def get_doctor_patient_profile(patient_id):
-    conn = get_db_connection()
-    if not conn: return jsonify({'message': 'DB Error'}), 500
-    try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT id, name, email, age, gender, height, weight, bmi, bp_status, sugar_status, activity_level, smoking, alcohol, allergies, existing_diseases, current_medications, past_surgeries, family_history, blood_group FROM users WHERE id = %s", (patient_id,))
-        user = cursor.fetchone()
-        
-        # Get latest prediction
-        cursor.execute("SELECT p.diabetes_risk, p.heart_risk, p.obesity_risk, p.hypertension_risk FROM predictions p JOIN health_logs hl ON hl.id = p.log_id WHERE hl.user_id = %s ORDER BY hl.log_date DESC LIMIT 1", (patient_id,))
-        prediction = cursor.fetchone()
-        if prediction and user:
-            user.update(prediction)
-        
-        return jsonify(user if user else {})
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
-    finally:
-        if 'cursor' in locals(): cursor.close()
-        if 'conn' in locals(): conn.close()
-
-@app.route('/doctor/prescription/ai_suggest', methods=['POST'])
-def ai_suggest_prescription():
-    from api_config import OPENROUTER_MODEL
-    data = request.json
-    symptoms = data.get('symptoms')
-    diagnosis = data.get('diagnosis')
-    patient_context = data.get('patient_context', '')
-    
-    prompt = f"""
-    You are an AI Medical Assistant. Based on the following patient profile, symptoms, and diagnosis, suggest a prescription.
-    Patient Profile: {patient_context}
-    Symptoms: {symptoms}
-    Diagnosis: {diagnosis}
-    
-    Return ONLY valid JSON in this format:
-    {{
-      "medicines": [
-         {{"name": "...", "dosage": "...", "frequency": "...", "duration": "...", "instructions": "..."}}
-      ],
-      "lifestyle_advice": "...",
-      "diet_advice": "...",
-      "recommended_tests": ["...", "..."]
-    }}
-    """
-    payload = {
-        "model": OPENROUTER_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.2
-    }
-    resp, err = call_openrouter_with_fallback(payload)
-    if not resp: return jsonify({'message': 'AI Error', 'error': err}), 503
-    
-    try:
-        content = resp.json()['choices'][0]['message']['content']
-        if "```json" in content: content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content: content = content.split("```")[1].split("```")[0].strip()
-        return jsonify(json.loads(content))
-    except Exception as e:
-        return jsonify({'message': 'Failed to parse AI response', 'error': str(e)}), 500
-
-@app.route('/doctor/prescription/drug_check', methods=['POST'])
-def ai_drug_check():
-    from api_config import OPENROUTER_MODEL
-    data = request.json
-    medicines = data.get('medicines', [])
-    allergies = data.get('allergies', '')
-    current_meds = data.get('current_medications', '')
-    
-    prompt = f"""
-    You are an AI Pharmacologist. Check the proposed medicines against the patient's allergies and current medications for severe interactions or warnings.
-    Proposed Medicines: {json.dumps(medicines)}
-    Patient Allergies: {allergies}
-    Current Medications: {current_meds}
-    
-    Return ONLY valid JSON in this format:
-    {{
-       "warnings": ["Warning 1", "Warning 2"] // Empty array if safe
-    }}
-    """
-    payload = {
-        "model": OPENROUTER_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.1
-    }
-    resp, err = call_openrouter_with_fallback(payload)
-    if not resp: return jsonify({'warnings': []}) # Fail open
-    try:
-        content = resp.json()['choices'][0]['message']['content']
-        if "```json" in content: content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content: content = content.split("```")[1].split("```")[0].strip()
-        return jsonify(json.loads(content))
-    except:
-        return jsonify({'warnings': []})
-
-@app.route('/doctor/prescription/issue', methods=['POST'])
-def issue_prescription():
-    data = request.json
-    doctor_id = data.get('doctor_id')
-    patient_id = data.get('patient_id')
-    symptoms = data.get('symptoms')
-    findings = data.get('clinical_findings')
-    vitals = data.get('vitals', {})
-    diagnosis = data.get('diagnosis')
-    
-    medicines = data.get('medicines', [])
-    lifestyle = data.get('lifestyle_advice')
-    diet = data.get('diet_advice')
-    tests = data.get('recommended_tests', [])
-    follow_up = data.get('follow_up_date')
-    
-    conn = get_db_connection()
-    if not conn: return jsonify({'message': 'DB Error'}), 500
-    try:
-        cursor = conn.cursor()
-        
-        # Insert consultation
-        cursor.execute(
-            "INSERT INTO consultations (doctor_id, patient_id, symptoms, clinical_findings, diagnosis, vitals) VALUES (%s, %s, %s, %s, %s, %s)",
-            (doctor_id, patient_id, symptoms, findings, diagnosis, json.dumps(vitals))
-        )
-        consult_id = cursor.lastrowid
-        
-        # Insert prescription
-        cursor.execute(
-            "INSERT INTO prescriptions (consultation_id, doctor_id, patient_id, diagnosis, lifestyle_advice, diet_advice, follow_up_date) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-            (consult_id, doctor_id, patient_id, diagnosis, lifestyle, diet, follow_up)
-        )
-        prescription_id = cursor.lastrowid
-        
-        # Insert medicines
-        for med in medicines:
-            cursor.execute(
-                "INSERT INTO prescription_medicines (prescription_id, medicine_name, dosage, frequency, duration, instructions) VALUES (%s, %s, %s, %s, %s, %s)",
-                (prescription_id, med.get('name'), med.get('dosage'), med.get('frequency'), med.get('duration'), med.get('instructions'))
-            )
-            
-        # Insert tests
-        for t in tests:
-            cursor.execute(
-                "INSERT INTO recommended_tests (prescription_id, test_name) VALUES (%s, %s)",
-                (prescription_id, t)
-            )
-            
-        conn.commit()
-        return jsonify({'status': 'success', 'prescription_id': prescription_id})
-    except Exception as e:
-        conn.rollback()
-        return jsonify({'message': str(e)}), 500
-    finally:
-        if 'cursor' in locals(): cursor.close()
-        if 'conn' in locals(): conn.close()
-
-@app.route('/doctor/prescriptions/<int:doctor_id>', methods=['GET'])
-def get_doctor_prescriptions(doctor_id):
-    conn = get_db_connection()
-    if not conn: return jsonify({'message': 'DB Error'}), 500
-    try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT p.*, u.name as patient_name FROM prescriptions p JOIN users u ON p.patient_id = u.id WHERE p.doctor_id = %s ORDER BY p.created_at DESC", (doctor_id,))
-        return jsonify(cursor.fetchall())
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
-    finally:
-        if 'cursor' in locals(): cursor.close()
-        if 'conn' in locals(): conn.close()
-
-@app.route('/patient/prescriptions/<int:patient_id>', methods=['GET'])
-def get_patient_prescriptions(patient_id):
-    conn = get_db_connection()
-    if not conn: return jsonify({'message': 'DB Error'}), 500
-    try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT p.*, d.name as doctor_name, d.specialization as doctor_specialization, d.hospital_name as doctor_hospital FROM prescriptions p JOIN doctors d ON p.doctor_id = d.id WHERE p.patient_id = %s ORDER BY p.created_at DESC", (patient_id,))
-        prescriptions = cursor.fetchall()
-        
-        for p in prescriptions:
-            cursor.execute("SELECT * FROM prescription_medicines WHERE prescription_id = %s", (p['id'],))
-            p['medicines'] = cursor.fetchall()
-            cursor.execute("SELECT test_name FROM recommended_tests WHERE prescription_id = %s", (p['id'],))
-            p['tests'] = [t['test_name'] for t in cursor.fetchall()]
-            
-        return jsonify(prescriptions)
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
-    finally:
-        if 'cursor' in locals(): cursor.close()
-        if 'conn' in locals(): conn.close()
-
-@app.route('/patient/book_appointment', methods=['POST'])
-def book_appointment():
-    data = request.json
-    patient_id = data.get('patient_id')
-    doctor_id = data.get('doctor_id')
-    date = data.get('date', '')
-    time = data.get('time', '')
-    symptoms = data.get('symptoms', '')
-    
-    conn = get_db_connection()
-    if not conn: return jsonify({'message': 'DB Error'}), 500
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, symptoms, status)
-            VALUES (%s, %s, %s, %s, %s, 'pending')
-        """, (patient_id, doctor_id, date, time, symptoms))
-        conn.commit()
-        return jsonify({'status': 'success', 'message': 'Appointment booked successfully.'})
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
-    finally:
-        if 'cursor' in locals(): cursor.close()
-        if 'conn' in locals(): conn.close()
-
-@app.route('/patient/notifications/<int:user_id>', methods=['GET'])
-def get_notifications(user_id):
-    conn = get_db_connection()
-    if not conn: return jsonify({'message': 'DB Error'}), 500
-    try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM notifications WHERE user_id = %s ORDER BY created_at DESC", (user_id,))
-        return jsonify(cursor.fetchall())
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
-    finally:
-        if 'cursor' in locals(): cursor.close()
-        if 'conn' in locals(): conn.close()
-
-@app.route('/patient/notifications/read', methods=['POST'])
-def mark_notifications_read():
-    data = request.json
-    user_id = data.get('user_id')
-    conn = get_db_connection()
-    if not conn: return jsonify({'message': 'DB Error'}), 500
-    try:
-        cursor = conn.cursor()
-        cursor.execute("UPDATE notifications SET is_read = TRUE WHERE user_id = %s", (user_id,))
+            INSERT INTO diet_adherence (user_id, prescription_id, meal_type, completed, logged_date)
+            VALUES (%s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE completed = VALUES(completed)
+        """, (user_id, prescription_id, meal_type, completed, logged_date))
+        if not completed:
+            create_notification(cursor, user_id=user_id, title='Meal Reminder', message=f'You missed {meal_type}. Try to stay close to your plan.', ntype='diet')
         conn.commit()
         return jsonify({'status': 'success'})
     except Exception as e:
         return jsonify({'message': str(e)}), 500
     finally:
-        if 'cursor' in locals(): cursor.close()
-        if 'conn' in locals(): conn.close()
-
-@app.route('/doctor/pending_requests/<int:doctor_id>', methods=['GET'])
-def get_pending_requests(doctor_id):
-    conn = get_db_connection()
-    if not conn: return jsonify({'message': 'DB Error'}), 500
-    try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("""
-            SELECT a.*, u.name as patient_name, u.age, u.gender 
-            FROM appointments a 
-            JOIN users u ON a.patient_id = u.id 
-            WHERE a.doctor_id = %s AND a.status = 'pending'
-        """, (doctor_id,))
-        return jsonify(cursor.fetchall())
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
-    finally:
-        if 'cursor' in locals(): cursor.close()
-        if 'conn' in locals(): conn.close()
-
-@app.route('/doctor/accept_request', methods=['POST'])
-def accept_request():
-    data = request.json
-    appointment_id = data.get('appointment_id')
-    modified_time = data.get('modified_time')
-    token_number = data.get('token_number')
-    
-    conn = get_db_connection()
-    if not conn: return jsonify({'message': 'DB Error'}), 500
-    try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM appointments WHERE id = %s", (appointment_id,))
-        appt = cursor.fetchone()
-        if not appt: return jsonify({'message': 'Appointment not found'}), 404
-        
-        # Update Appointment
-        cursor.execute("""
-            UPDATE appointments 
-            SET status = 'accepted', appointment_time = %s, token_number = %s 
-            WHERE id = %s
-        """, (modified_time, token_number, appointment_id))
-        
-        # Add to doctor's active patient_queue for compatibility
-        cursor.execute("SELECT patient_queue FROM doctors WHERE id = %s", (appt['doctor_id'],))
-        doc = cursor.fetchone()
-        queue = json.loads(doc['patient_queue']) if doc['patient_queue'] else []
-        if appt['patient_id'] not in queue:
-            queue.append(appt['patient_id'])
-            cursor.execute("UPDATE doctors SET patient_queue = %s WHERE id = %s", (json.dumps(queue), appt['doctor_id']))
-        
-        # Notify Patient
-        cursor.execute("""
-            INSERT INTO notifications (user_id, title, message) 
-            VALUES (%s, 'Appointment Confirmed', %s)
-        """, (appt['patient_id'], f"Your appointment is confirmed for {modified_time}. Token: {token_number}"))
-        
-        conn.commit()
-        return jsonify({'status': 'success'})
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
-    finally:
-        if 'cursor' in locals(): cursor.close()
-        if 'conn' in locals(): conn.close()
-
-@app.route('/doctor/reject_request', methods=['POST'])
-def reject_request():
-    data = request.json
-    appointment_id = data.get('appointment_id')
-    
-    conn = get_db_connection()
-    if not conn: return jsonify({'message': 'DB Error'}), 500
-    try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM appointments WHERE id = %s", (appointment_id,))
-        appt = cursor.fetchone()
-        if not appt: return jsonify({'message': 'Appointment not found'}), 404
-        
-        cursor.execute("UPDATE appointments SET status = 'rejected' WHERE id = %s", (appointment_id,))
-        
-        # Notify Patient
-        cursor.execute("""
-            INSERT INTO notifications (user_id, title, message) 
-            VALUES (%s, 'Appointment Cancelled', 'Your appointment request was rejected. Please try another slot.')
-        """, (appt['patient_id'],))
-        
-        conn.commit()
-        return jsonify({'status': 'success'})
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
-    finally:
-        if 'cursor' in locals(): cursor.close()
-        if 'conn' in locals(): conn.close()
+        cursor.close()
+        conn.close()
 
 if __name__ == '__main__':
     setup_database()
