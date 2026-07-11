@@ -185,7 +185,7 @@ export default function PatientPrescriptionsScreen() {
             {prescriptions.length === 0 ? (
                 <View style={styles.emptyState}>
                     <MaterialIcons name="receipt-long" size={60} color="#CCC" />
-                    <Text style={styles.emptyText}>You don't have any prescriptions yet.</Text>
+                    <Text style={styles.emptyText}>You don&apos;t have any prescriptions yet.</Text>
                 </View>
             ) : (
                 <FlatList

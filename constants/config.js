@@ -30,11 +30,18 @@ const getApiUrl = () => {
 
     if (!hostUri) {
         // Fallback for production or when hostUri is unavailable
-        return 'http://localhost:5000';
+        // Use a known local IP or Android emulator IP depending on what usually works
+        return 'http://192.168.1.38:5000';
     }
 
-    // Extract IP address and use backend port 5000
+    // Extract IP address
     const ip = hostUri.split(':')[0];
+    
+    // If it's localhost or 127.0.0.1 on a non-web device, it might be an emulator
+    if ((ip === '127.0.0.1' || ip === 'localhost') && Platform.OS === 'android') {
+        return 'http://10.0.2.2:5000';
+    }
+
     return `http://${ip}:5000`;
 };
 

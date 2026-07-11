@@ -1097,17 +1097,22 @@ def get_nearby_doctors():
 
         # Calculate distance and filter
         nearby_doctors = []
+        is_global_search = (user_lat == 0.0 and user_lon == 0.0)
+
         for doc in doctors:
             if doc['latitude'] and doc['longitude']:
                 # Convert to float to ensure proper type for MapView
                 lat = float(doc['latitude'])
                 lon = float(doc['longitude'])
                 dist = haversine(user_lat, user_lon, lat, lon)
-                if dist <= 10.0: # 10km radius
+                if is_global_search or dist <= 10.0: # 10km radius or global search
                     doc['latitude'] = lat
                     doc['longitude'] = lon
-                    doc['distance'] = round(dist, 2)
+                    doc['distance'] = 0.0 if is_global_search else round(dist, 2)
                     nearby_doctors.append(doc)
+            elif is_global_search:
+                doc['distance'] = 0.0
+                nearby_doctors.append(doc)
 
         # Smart Sorting based on user profile if user_id provided
         if user_id:

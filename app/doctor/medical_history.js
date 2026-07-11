@@ -47,7 +47,7 @@ export default function DoctorMedicalHistoryScreen() {
                 <TouchableOpacity onPress={() => router.back()} style={styles.backBtnIcon}>
                     <MaterialIcons name="arrow-back" size={24} color="#333" />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>{patient.name}'s History</Text>
+                <Text style={styles.headerTitle}>{patient.name}&apos;s History</Text>
                 <View style={{width: 24}} />
             </View>
 

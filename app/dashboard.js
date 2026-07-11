@@ -20,6 +20,7 @@ export default function DashboardScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [profile, setProfile] = useState({});
     const [activities, setActivities] = useState([]);
+    const [labTests, setLabTests] = useState([]);
     const [alertedIds, setAlertedIds] = useState(new Set());
 
     // SOS State Variables
@@ -78,6 +79,7 @@ export default function DashboardScreen() {
                     setProfile(result.user_profile);
                     await AsyncStorage.setItem('user_profile', JSON.stringify(result.user_profile));
                     fetchActivities(result.user_profile.id);
+                    fetchLabTests(result.user_profile.id);
                 }
             } else {
                 console.error("Dashboard error:", result.error);
@@ -126,6 +128,27 @@ export default function DashboardScreen() {
             }
         } catch (error) {
             console.error("Fetch activities error:", error);
+        }
+    };
+
+    const fetchLabTests = async (userId) => {
+        try {
+            const response = await fetch(`${API_URL}/patient/prescriptions/${userId}`);
+            if (response.ok) {
+                const data = await response.json();
+                // Extract all tests from all prescriptions
+                let allTests = [];
+                data.forEach(presc => {
+                    if (presc.tests && presc.tests.length > 0) {
+                        presc.tests.forEach(test => {
+                            allTests.push({ test_name: test, doctor_name: presc.doctor_name, date: new Date(presc.created_at).toLocaleDateString() });
+                        });
+                    }
+                });
+                setLabTests(allTests);
+            }
+        } catch (e) {
+            console.error('Error fetching lab tests:', e);
         }
     };
 
@@ -481,7 +504,7 @@ export default function DashboardScreen() {
                 <View style={styles.card}>
                     <View style={[styles.cardHeader, { backgroundColor: '#4CAF50', borderRadius: 12, padding: 10 }]}>
                         <MaterialIcons name="event-note" size={20} color="#FFF" />
-                        <Text style={styles.cardTitleWhite}>Doctor's Daily Orders</Text>
+                        <Text style={styles.cardTitleWhite}>Doctor&apos;s Daily Orders</Text>
                     </View>
                     <View style={styles.activityList}>
                         {activities.map((item) => (
@@ -498,6 +521,32 @@ export default function DashboardScreen() {
                                 ) : (
                                     <MaterialIcons name="radio-button-unchecked" size={24} color="#DDD" />
                                 )}
+                            </View>
+                        ))}
+                    </View>
+                </View>
+            )}
+
+            {/* Recommended Lab Tests */}
+            {labTests.length > 0 && (
+                <View style={styles.card}>
+                    <View style={[styles.cardHeader, { backgroundColor: '#9C27B0', borderRadius: 12, padding: 10 }]}>
+                        <MaterialIcons name="science" size={20} color="#FFF" />
+                        <Text style={styles.cardTitleWhite}>Recommended Lab Tests</Text>
+                    </View>
+                    <View style={styles.activityList}>
+                        {labTests.map((item, index) => (
+                            <View key={index} style={styles.activityItem}>
+                                <View style={[styles.timeBadge, { backgroundColor: '#F3E5F5' }]}>
+                                    <Text style={[styles.timeText, { color: '#7B1FA2' }]}>{item.date}</Text>
+                                </View>
+                                <View style={{ flex: 1, marginLeft: 15 }}>
+                                    <Text style={styles.activityName}>{item.test_name}</Text>
+                                    <Text style={styles.doctorName}>Prescribed by Dr. {item.doctor_name}</Text>
+                                </View>
+                                <TouchableOpacity style={{ padding: 5 }} onPress={() => Alert.alert('Book Test', 'Lab test booking will be available soon.')}>
+                                    <MaterialIcons name="local-hospital" size={24} color="#9C27B0" />
+                                </TouchableOpacity>
                             </View>
                         ))}
                     </View>

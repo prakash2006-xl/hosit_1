@@ -25,9 +25,12 @@ export default function FindDoctorsScreen() {
 
     const fetchAllDoctors = async () => {
         try {
+            const savedProfile = await AsyncStorage.getItem('user_profile');
+            const userId = savedProfile ? JSON.parse(savedProfile).id : '';
+
             // For now, we can use the nearby doctors endpoint without lat/lng to get all doctors, 
             // or if the backend supports it, just fetch all. The /doctors/nearby endpoint falls back to all if no lat/lng.
-            const response = await fetch(`${API_URL}/doctors/nearby?lat=0&lon=0`);
+            const response = await fetch(`${API_URL}/doctors/nearby?lat=0&lon=0&user_id=${userId}`);
             const data = await response.json();
             if (response.ok) {
                 setDoctors(data);

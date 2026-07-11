@@ -67,9 +67,10 @@ export default function NearbyDoctorsScreen() {
     };
 
     const fetchNearbyDoctors = async (coords, profile = userProfile) => {
+        let url = '';
         try {
             const user_id = profile?.id || '';
-            const url = `${API_URL}/doctors/nearby?lat=${coords.latitude}&lon=${coords.longitude}&user_id=${user_id}`;
+            url = `${API_URL}/doctors/nearby?lat=${coords.latitude}&lon=${coords.longitude}&user_id=${user_id}`;
 
             const response = await fetch(url, {
                 method: 'GET',

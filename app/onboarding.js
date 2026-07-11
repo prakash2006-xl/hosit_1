@@ -249,7 +249,7 @@ export default function OnboardingScreen() {
         >
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <View style={styles.header}>
-                    <Text style={styles.title}>Let's Set Up Your Profile</Text>
+                    <Text style={styles.title}>Let&apos;s Set Up Your Profile</Text>
                     <Text style={styles.subtitle}>Step {step} of 4</Text>
                     <View style={styles.progressContainer}>
                         <View style={[styles.progressBar, { width: `${(step / 4) * 100}%` }]} />
